@@ -25,6 +25,33 @@ def validate_resource_name(value: str, *, field: str = "id") -> None:
         )
 ```
 
+The Rust equivalent in `mycli-core::validation`:
+
+```rust
+const FORBIDDEN_ID_CHARS: &[char] = &['?', '#', '%', '/', '\\', ' ', '\t', '\n', '\r'];
+
+pub fn validate_resource_id(id: &str) -> Result<(), CliError> {
+    if id.is_empty() {
+        return Err(CliError::validation("resource ID cannot be empty"));
+    }
+    if id.contains("..") {
+        return Err(CliError::validation(format!(
+            "resource ID '{id}' contains '..' (path traversal attempt)"
+        )));
+    }
+    for c in id.chars() {
+        if FORBIDDEN_ID_CHARS.contains(&c) || (c as u32) < 0x20 || (c as u32) == 0x7F {
+            return Err(CliError::validation(format!(
+                "resource ID '{id}' contains forbidden character {c:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+```
+
+For async timeouts, both languages use a structured timeout primitive — `asyncio.wait_for(coro, timeout)` in Python, `tokio::time::timeout(duration, future)` in Rust. Both return a typed timeout error you can map to exit code 5 (TIMEOUT). Never sleep-poll or implement your own deadline tracking; the runtime's primitive integrates with cancellation.
+
 Why each character:
 
 - `?` and `#` — agents hallucinate query strings inside IDs (`fileId?fields=name`).

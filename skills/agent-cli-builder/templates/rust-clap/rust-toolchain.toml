@@ -1,0 +1,7 @@
+[toolchain]
+# Tracks current stable. Pin a specific version (e.g. "1.90") for reproducible
+# CI builds; the floor enforced via `rust-version` in Cargo.toml is the real
+# compatibility contract.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

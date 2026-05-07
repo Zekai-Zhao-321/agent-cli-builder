@@ -34,8 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--language",
         default="python-typer",
-        choices=["python-typer"],
-        help="Template to use. Currently only python-typer is bundled.",
+        choices=["python-typer", "rust-clap"],
+        help="Template to use.",
     )
     parser.add_argument(
         "--force",
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copytree(src, dst)
     rename_in_tree(dst, old="mycli", new=args.name)
     print(f"ok: scaffolded {args.name} -> {dst}", file=sys.stderr)
-    print(_next_steps(args.name, dst), file=sys.stderr)
+    print(_next_steps(args.name, dst, args.language), file=sys.stderr)
     return 0
 
 
@@ -101,12 +101,17 @@ def rename_in_tree(root: Path, *, old: str, new: str) -> None:
             text = text.replace(old_upper, new_upper)
         return text.replace(old, new)
 
-    # First, rename directories from deepest to shallowest.
+    # First, rename directories from deepest to shallowest. Substring-aware:
+    # `mycli` -> `<new>` and any compound name like `mycli-cli` -> `<new>-cli`,
+    # `crates/mycli-core` -> `crates/<new>-core`. Same for the uppercase
+    # variant. Renaming deepest-first avoids invalidating parent paths in
+    # the same pass.
     dirs_to_rename: list[tuple[Path, Path]] = []
     for path in sorted(root.rglob("*"), key=lambda p: -len(p.parts)):
-        if path.is_dir() and (path.name == old or path.name == old_upper):
-            new_name = new if path.name == old else new_upper
-            dirs_to_rename.append((path, path.with_name(new_name)))
+        if path.is_dir():
+            renamed = replace_both(path.name)
+            if renamed != path.name:
+                dirs_to_rename.append((path, path.with_name(renamed)))
     for old_path, new_path in dirs_to_rename:
         old_path.rename(new_path)
 
@@ -127,9 +132,13 @@ def rename_in_tree(root: Path, *, old: str, new: str) -> None:
                 path.write_text(new_content, encoding="utf-8")
 
 
-def _next_steps(name: str, dst: Path) -> str:
-    import sys
+def _next_steps(name: str, dst: Path, language: str) -> str:
+    if language == "rust-clap":
+        return _next_steps_rust(name, dst)
+    return _next_steps_python(name, dst)
 
+
+def _next_steps_python(name: str, dst: Path) -> str:
     if sys.platform == "win32":
         activate = ".venv\\Scripts\\Activate.ps1"
     else:
@@ -147,8 +156,37 @@ Next steps:
 Then follow the agent-cli-builder cold-start checklist:
   - Replace the demo `hello` command in src/{name}/cli.py with your own.
   - Add a SCHEMAS entry per command so `{name} schema <method>` returns a real schema.
-  - If your CLI wraps a REST API, use HttpClient from src/{name}/http.py — it maps
+  - If your CLI wraps a REST API, use HttpClient from src/{name}/http.py - it maps
     HTTP status codes to the right exit codes automatically.
+  - Fill in the recipes in skills/{name}/SKILL.md with your real workflows.
+  - Score against the agent-readiness rubric (references/evaluation.md) before
+    declaring shippable; aim for "Agent-ready" (>=65%) at minimum.
+"""
+
+
+def _next_steps_rust(name: str, dst: Path) -> str:
+    return f"""
+Next steps:
+
+  cd {dst}
+  cargo install --path crates/{name}-cli --locked
+  {name} --help
+  {name} hello world --output json
+  {name} schema show hello
+  {name} schema output hello
+
+Or run uninstalled from the workspace:
+
+  cargo run -p {name}-cli -- hello world --output json
+
+Then follow the agent-cli-builder cold-start checklist:
+  - Replace the demo `hello` command in crates/{name}-cli/src/commands/hello.rs.
+  - Add request/response types to crates/{name}-core/src/schemas.rs and
+    register them in registered_methods() so `{name} schema show <method>`
+    picks them up. Same types feed the schema and the wire format - cannot drift.
+  - If your CLI wraps a REST API, use HttpClient from crates/{name}-core/src/http.rs.
+    It uses rustls-tls-native-roots, so corporate-proxy CA chains in the system
+    trust store work without OpenSSL setup.
   - Fill in the recipes in skills/{name}/SKILL.md with your real workflows.
   - Score against the agent-readiness rubric (references/evaluation.md) before
     declaring shippable; aim for "Agent-ready" (>=65%) at minimum.

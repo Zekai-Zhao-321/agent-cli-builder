@@ -136,8 +136,9 @@ This single command makes auth issues self-diagnosable. Without it, agents waste
 ## HTTP status → exit code mapping
 
 For REST-backed CLIs, do not surface HTTP status codes raw. Map them to the
-semantic exit codes from the taxonomy. The bundled `http.py` does this for
-you, but the rules to follow if you write your own:
+semantic exit codes from the taxonomy. The bundled HTTP clients do this for
+you (`http.py` in the Python+Typer template, `http.rs` in the Rust+clap
+template), but the rules to follow if you write your own:
 
 | HTTP status     | Exit code (name)          | Why                                       |
 |-----------------|---------------------------|-------------------------------------------|
@@ -149,6 +150,22 @@ you, but the rules to follow if you write your own:
 | 429             | 4 (QUOTA)                 | Rate-limit; the agent should backoff      |
 | 451             | 10 (POLICY)               | Blocked for legal/policy reasons          |
 | 5xx             | 6 (NETWORK)               | Retry with backoff; upstream is degraded  |
+
+In Rust the same mapping looks like this (from `mycli-core::http`):
+
+```rust
+let err = match status {
+    StatusCode::UNAUTHORIZED => CliError::auth_expired(...),
+    StatusCode::FORBIDDEN => CliError::new(ErrorCode::Forbidden, ...),
+    StatusCode::TOO_MANY_REQUESTS => CliError::quota(...),
+    StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => CliError::timeout(...),
+    s if s.is_server_error() => CliError::network(...),
+    s if s.is_client_error() => CliError::validation(...),
+    _ => CliError::internal(...),
+};
+```
+
+The Rust client also defaults to `rustls-tls-native-roots` for the TLS stack, so it picks up corporate-proxy CA chains from the OS trust store without OpenSSL setup. Worth knowing: this is the difference between "works on a dev laptop" and "works on a locked-down build agent behind a system-CA proxy".
 
 Forward `error.message` and `error.hint` from the upstream JSON when
 present — most decent APIs already return both. Do not invent your own

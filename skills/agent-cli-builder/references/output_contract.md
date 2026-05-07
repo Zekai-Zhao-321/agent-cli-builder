@@ -175,6 +175,34 @@ def sanitize_for_json(obj):
 
 Apply this at the envelope level — once, in `output.emit_success` / `output.emit_error` — so every command benefits without per-command thought.
 
+The same logic in Rust:
+
+```rust
+use serde_json::Value;
+
+pub fn sanitize(value: Value) -> Value {
+    match value {
+        Value::String(s) => Value::String(strip_control_chars(&s)),
+        Value::Array(arr) => Value::Array(arr.into_iter().map(sanitize).collect()),
+        Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (k, sanitize(v))).collect())
+        }
+        other => other,
+    }
+}
+
+fn strip_control_chars(s: &str) -> String {
+    s.chars()
+        .filter(|&c| {
+            let cu = c as u32;
+            !(cu < 0x20 && c != '\n' && c != '\r' && c != '\t') && cu != 0x7F
+        })
+        .collect()
+}
+```
+
+The Rust template wires this into the `mycli-core::output::emit_success` and `emit_error` paths, so every command output is sanitized before serialization without per-command code.
+
 ## Non-TTY checklist
 
 Run through these for every command that prints output:

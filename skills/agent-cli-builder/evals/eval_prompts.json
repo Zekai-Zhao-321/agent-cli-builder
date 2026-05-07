@@ -113,6 +113,31 @@
           "transcript references retrofit_playbook.md and command_registry.md (or names drift testing)"
         ]
       }
+    },
+    {
+      "id": 6,
+      "name": "cold-start-rust-static-binary",
+      "category": "cold-start",
+      "prompt": "I want to build a CLI in Rust. We need a single static binary so it works on locked-down build environments that have no Python or Node runtime. Help me get started.",
+      "expected_outputs": [
+        "scaffold script invoked with --language rust-clap (not the Python template)",
+        "two-crate workspace explained: <name>-core (library) + <name>-cli (binary), share-core ready",
+        "static-binary distribution path mentioned: cargo install --path crates/<name>-cli --locked, with cargo-dist as the followup for signed multi-platform release artifacts",
+        "rustls-tls-native-roots is called out for environments behind a system-CA proxy (no OpenSSL setup, picks up the OS trust store)",
+        "envelope shape {ok, data, metadata} is preserved (invariant #3); explicit warning that emitting raw JSON instead of the envelope is the most common Rust regression",
+        "schemars derives are mentioned as the source of truth for schema introspection (so `cli schema show <method>` and the wire format cannot drift)",
+        "pointer to scoring against the agent-readiness rubric (references/evaluation.md) before declaring shippable; conditional axes (async, MCP) noted as N/A for the simple case"
+      ],
+      "verifier": {
+        "kind": "transcript-and-state",
+        "checks": [
+          "scaffold script invoked with --language rust-clap",
+          "transcript references templates/rust-clap/README.md or the share-core / two-crate split rationale",
+          "transcript names rustls-tls-native-roots OR explains why it matters (corp-proxy CA in OS trust store)",
+          "transcript names schemars (or 'serde + schema-derived') as the schema-introspection mechanism",
+          "transcript references the agent-readiness rubric (references/evaluation.md) before declaring shippable"
+        ]
+      }
     }
   ]
 }

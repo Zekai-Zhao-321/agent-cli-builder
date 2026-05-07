@@ -1,0 +1,103 @@
+# Workspace root.
+#
+# Two crates:
+#   * mycli-core  - the library where all logic lives. The only place that
+#                   touches `core/` types directly. This is the share-core
+#                   that a future MCP adapter would import alongside the CLI.
+#   * mycli-cli   - the binary. A thin clap layer that parses args, calls
+#                   into mycli-core, and renders the result through
+#                   mycli-core::output.
+#
+# Why two crates instead of one with a [[bin]] target:
+#   1. Discipline. The lib crate cannot reach for clap, so business logic
+#      cannot accidentally couple to CLI parsing.
+#   2. When you add an `mycli-mcp` crate (the share-core MCP pattern), it
+#      depends on `mycli-core` exactly the way `mycli-cli` does. No code
+#      duplication; both adapters call the same library.
+#   3. `cargo install --path crates/mycli-cli --locked` installs only the
+#      binary, with reproducible dependency resolution. `cargo-dist` finds it
+#      automatically.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/mycli-core",
+    "crates/mycli-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Compatibility floor. Bump only when a dependency forces it; pinning
+# dep versions in Cargo.lock is the right knob for short-term stability.
+rust-version = "1.87"
+license = "MIT"
+repository = "https://example.com/mycli"
+authors = []
+publish = false
+
+# Deny unsafe everywhere. Agent-driven Rust shouldn't need it; if you do,
+# unset this in the offending crate and document the reason in a comment.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Pedantic clippy. Tighten over time; loosen specific lints with #[allow(...)]
+# at the use site, never globally.
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# These are noise on a CLI scaffold and obscure the real lints to fix.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# All shared dependencies live here. Crates pull them in via
+# `serde = { workspace = true }` so version drift cannot happen.
+[workspace.dependencies]
+# Async runtime + HTTP. rustls-tls-native-roots picks up the system CA chain
+# (matters in environments behind a system-CA proxy that injects a custom
+# root into the OS trust store; OpenSSL pain avoided entirely).
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "process", "signal", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip"] }
+
+# Serialization + schema. schemars derives JSON Schema from the same types
+# serde derives Serialize/Deserialize from, so `mycli schema show <method>`
+# never falls out of sync with the actual wire format.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = { version = "0.8", features = ["chrono"] }
+
+# Error types. thiserror inside the library (typed errors per failure class);
+# anyhow only in the binary's main() for top-level error chaining.
+thiserror = "2"
+anyhow = "1"
+
+# Structured logging. Goes to stderr, never stdout (invariant #1).
+# RUST_LOG / MYCLI_LOG drives the level via env-filter.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# CLI parsing. derive + env so flags can be backed by env vars (auth precedence).
+clap = { version = "4", features = ["derive", "env", "wrap_help", "suggestions"] }
+
+# Misc.
+# (TTY detection uses std::io::IsTerminal, stable since Rust 1.70 — no extra crate.)
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+regex = "1"
+url = "2"
+dirs = "6"                       # XDG-compliant config/cache paths
+strsim = "0.11"                  # Levenshtein for typo router (`Did you mean ...`)
+
+# Production release profile. Optimised for size and link-time without
+# pessimising the dev cycle.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = 3
+panic = "abort"
+
+# `cargo dist` reads this profile if/when you adopt cargo-dist for releases.
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -3,6 +3,20 @@
 Usage:
     python evals/verify_scaffold.py /path/to/scaffolded/cli
 
+The checks are language-agnostic: they shell out to the CLI binary and
+inspect stdout/stderr/exit codes. Works for Python+Typer, Rust+clap, and any
+future template that puts a binary on PATH and obeys the envelope contract.
+
+For the Python+Typer template:
+    cd <scaffolded-dir>
+    pip install -e .
+    python evals/verify_scaffold.py <name> --skill-path skills/<name>/SKILL.md
+
+For the Rust+clap template:
+    cd <scaffolded-dir>
+    cargo install --path crates/<name>-cli --locked
+    python evals/verify_scaffold.py <name> --skill-path skills/<name>/SKILL.md
+
 This script runs the scaffolded CLI and asserts:
 - `cli --output json hello world` returns a parseable JSON success envelope
   matching the {ok, data, metadata} shape.

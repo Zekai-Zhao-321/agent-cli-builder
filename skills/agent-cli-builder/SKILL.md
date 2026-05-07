@@ -110,15 +110,20 @@ If the user says "I don't know", default to: Python + Typer, single product, bot
 
 ### Step 2 — Pick the language and framework
 
-| Language   | Framework                | Pick when                                                                |
-|------------|--------------------------|--------------------------------------------------------------------------|
-| Python     | **Typer** (recommended)  | API wrappers, devs comfortable in Python, want rich/click-like ergonomics|
-| Python     | Click                    | Already on Click, retrofitting                                            |
-| TypeScript | Commander or oclif       | Node-first stack, npm distribution                                        |
-| Go         | Cobra                    | Single static binary, ops-facing tools                                    |
-| Rust       | clap                     | High performance, complex platform CLI like `gws`                         |
+| Language   | Framework                  | Bundled? | Pick when                                                              |
+|------------|----------------------------|----------|------------------------------------------------------------------------|
+| Python     | **Typer** (recommended)    | yes      | API wrappers, devs comfortable in Python, want rich/click-like ergonomics |
+| Rust       | **clap** (recommended)     | yes      | Single static binary, locked-down build environments, high concurrency, share-core MCP planned |
+| Python     | Click                      | no       | Already on Click, retrofitting                                          |
+| TypeScript | Commander or oclif         | no       | Node-first stack, npm distribution                                      |
+| Go         | Cobra                      | no       | Single static binary alternative to Rust, ops-facing tools              |
 
-The skill ships a Python+Typer scaffold in `templates/python-typer/`. For other stacks, the *patterns* in `references/` are language-agnostic — port the output formatter and error envelope first, then everything else slots in.
+Two scaffolds ship today:
+
+- `templates/python-typer/` — single package with all modules under `src/<name>/`.
+- `templates/rust-clap/` — two-crate workspace (`crates/<name>-core` library + `crates/<name>-cli` binary). The library/binary split *is* the share-core pattern — adding `<name>-mcp` later is a third sibling crate, no logic moves.
+
+For other stacks, the *patterns* in `references/` are language-agnostic — port the output formatter and error envelope first, then everything else slots in.
 
 ### Step 3 — Lock the output contract
 
@@ -148,24 +153,26 @@ Predictable grammar lets agents pattern-complete the next command without `--hel
 Run the bundled scaffold script to lay down a starter:
 
 ```bash
-python scripts/scaffold.py \
-  --name mycli \
-  --target ./mycli \
-  --language python-typer
+# Python + Typer
+python scripts/scaffold.py --name mycli --target ./mycli --language python-typer
+
+# Rust + clap
+python scripts/scaffold.py --name mycli --target ./mycli --language rust-clap
 ```
 
-This drops a project that already implements:
+The renamer is case-insensitive (so `MYCLI_TOKEN` becomes `<NAME>_TOKEN`) and substring-aware (so `crates/mycli-core` becomes `crates/<name>-core` for the Rust template). Both scaffolds drop a project that already implements:
 
 - Global flags (`--output`, `--quiet`, `--non-interactive`, `--dry-run`, `--yes`, `--timeout`, `--verbose`), accepted both before and after subcommands
-- The output formatter (`output.py`) with TTY auto-detection
-- Error envelope and exit code taxonomy (`errors.py`)
-- Input validators (`validation.py`) — rejects `?#%/\..` and control chars in IDs; sandboxes output paths to CWD
-- An HTTP client (`http.py`) with HTTP-status → exit-code mapping (401/403→AUTH, 429→QUOTA, 5xx→NETWORK, etc.) — for REST-backed CLIs
-- An async task pattern (`async_tasks.py`) with a swappable local store
+- An output formatter (`output.py` / `output.rs`) with TTY auto-detection and control-character sanitization
+- An error envelope and exit code taxonomy (`errors.py` / `errors.rs`)
+- Input validators (`validation.py` / `validation.rs`) — rejects `?#%/\..` and control chars in IDs; sandboxes output paths to CWD
+- An HTTP client (`http.py` / `http.rs`) with HTTP-status → exit-code mapping (401/403→AUTH, 429→QUOTA, 5xx→NETWORK, etc.) — for REST-backed CLIs. The Rust client uses `rustls-tls-native-roots` so it picks up the system CA chain — environments behind a corporate proxy that injects a custom root work without OpenSSL setup.
+- An async task pattern (`async_tasks.py` / `async_tasks.rs`) with a swappable local store
+- Schema introspection (`mycli schema show <method>` + `mycli schema output <method>`); in the Rust template both schemas come from `serde + schemars` derives so they cannot drift from the wire format
 - A working `hello` command end-to-end
 - A starter `skills/mycli/SKILL.md` ready to be filled in
 
-Read [templates/python-typer/README.md](templates/python-typer/README.md) for what each file does.
+Read [templates/python-typer/README.md](templates/python-typer/README.md) or [templates/rust-clap/README.md](templates/rust-clap/README.md) for the per-language file map.
 
 ### Steps 6–9 — Fill in the pieces
 
@@ -313,11 +320,13 @@ Push back if the user proposes any of these:
 
 ## Templates and scripts
 
-- [templates/python-typer/](templates/python-typer/) — opinionated starter; copies as a working CLI plus shipped skill
-- [scripts/scaffold.py](scripts/scaffold.py) — generates a new project from `templates/python-typer` with the user's chosen name
+- [templates/python-typer/](templates/python-typer/) — Python + Typer starter; single package under `src/<name>/`
+- [templates/rust-clap/](templates/rust-clap/) — Rust + clap starter; two-crate workspace (`crates/<name>-core` + `crates/<name>-cli`), share-core ready
+- [scripts/scaffold.py](scripts/scaffold.py) — generates a new project from either template, renames `mycli`/`MYCLI` substrings (case-insensitive, substring-aware) to the user's chosen name
 
 ```bash
 python scripts/scaffold.py --name myci --target ./myci --language python-typer
+python scripts/scaffold.py --name myci --target ./myci --language rust-clap
 ```
 
 ## Reference CLI worth studying
