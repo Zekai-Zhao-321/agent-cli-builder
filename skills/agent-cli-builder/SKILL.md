@@ -166,11 +166,13 @@ The renamer is case-insensitive (so `MYCLI_TOKEN` becomes `<NAME>_TOKEN`) and su
 - An output formatter (`output.py` / `output.rs`) with TTY auto-detection and control-character sanitization
 - An error envelope and exit code taxonomy (`errors.py` / `errors.rs`)
 - Input validators (`validation.py` / `validation.rs`) — rejects `?#%/\..` and control chars in IDs; sandboxes output paths to CWD
-- An HTTP client (`http.py` / `http.rs`) with HTTP-status → exit-code mapping (401/403→AUTH, 429→QUOTA, 5xx→NETWORK, etc.) — for REST-backed CLIs. The Rust client uses `rustls-tls-native-roots` so it picks up the system CA chain — environments behind a corporate proxy that injects a custom root work without OpenSSL setup.
-- An async task pattern (`async_tasks.py` / `async_tasks.rs`) with a swappable local store
+- An HTTP client (`http.py` / `http.rs`) with HTTP-status → exit-code mapping (401/403→AUTH, 429→QUOTA, 5xx→NETWORK). The Rust client uses `rustls-tls-native-roots` so it picks up the system CA chain — environments behind a corporate proxy that injects a custom root work without OpenSSL setup.
+- An async task **trait** (`TaskStore` in Rust, `Protocol` in Python) plus the `wait_for_terminal` / `wait_for` polling helper. **No concrete backend** — the template ships an `UnconfiguredStore` placeholder that fails with a helpful error pointing at the recipes file. Wire your real backend in `commands/task.rs::make_store()` (Rust) or `cli.py::_make_store()` (Python).
 - Schema introspection (`mycli schema show <method>` + `mycli schema output <method>`); in the Rust template both schemas come from `serde + schemars` derives so they cannot drift from the wire format
-- A working `hello` command end-to-end
+- A working `hello` demo command (delete after writing your first real one)
 - A starter `skills/mycli/SKILL.md` ready to be filled in
+
+The templates are intentionally lean — they ship the **contract** (what would drift between agent-generated CLIs if not pinned in code) but not the **filler** (concrete `TaskStore` backends, `cancel`/`list`/`download` flows, custom command groupings) which depend on your domain. See [references/template_recipes.md](references/template_recipes.md) for worked examples of those filler patterns when you need them.
 
 Read [templates/python-typer/README.md](templates/python-typer/README.md) or [templates/rust-clap/README.md](templates/rust-clap/README.md) for the per-language file map.
 
@@ -316,6 +318,7 @@ Push back if the user proposes any of these:
 - [references/command_registry.md](references/command_registry.md) — the highest-leverage maintenance pattern: one registry of command metadata, every surface (help, shipped SKILL.md, schema, MCP tools) derived or drift-tested against it
 - [references/shipping_skills.md](references/shipping_skills.md) — writing the SKILL.md(s) that ship with the CLI; cross-skill negative triggers; token-cost annotations
 - [references/retrofit_playbook.md](references/retrofit_playbook.md) — turning a human-first CLI into an agent-first one, in shippable diffs
+- [references/template_recipes.md](references/template_recipes.md) — worked implementations of the things the templates *don't* ship by default (file-backed TaskStore with cancel/list, `download` with sandboxed paths, adding methods to the schema registry)
 - [references/evaluation.md](references/evaluation.md) — the agent-readiness rubric (11 weighted axes) + real-task eval methodology
 
 ## Templates and scripts

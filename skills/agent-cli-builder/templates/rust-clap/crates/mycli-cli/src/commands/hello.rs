@@ -1,6 +1,9 @@
-//! Demo command. Replace with your first real command, then mirror this
-//! structure: parse args -> validate -> (dry-run preview OR call core
-//! library) -> emit envelope.
+//! Demo command. **Replace with your first real command.**
+//!
+//! Why this is here at all: it exercises the contract surface end-to-end
+//! (envelope, dry-run, validation, raw-payload pathway) so the verifier
+//! has something to check after scaffolding. Keep the shape; replace the
+//! domain.
 
 use clap::Args as ClapArgs;
 
@@ -13,10 +16,8 @@ use crate::cli::GlobalArgs;
 
 #[derive(Debug, ClapArgs)]
 pub struct HelloArgs {
-    /// Name to greet. Required unless --json or --params-file supplies one.
     pub name: Option<String>,
 
-    /// Uppercase the greeting.
     #[arg(long)]
     pub shout: bool,
 
@@ -31,29 +32,28 @@ pub struct HelloArgs {
 
 pub async fn run(args: &HelloArgs, global: &GlobalArgs) -> Result<(), CliError> {
     let req = build_request(args)?;
-
-    // Defensive validation. A real command would also validate domain-specific
-    // shape (e.g. enum values, length limits). The point is: hardening lives
-    // at the boundary, not scattered through every code path.
     validate_resource_id(&req.name)?;
 
-    if global.dry_run {
-        let resp = HelloResponse {
-            greeting: format_greeting(&req),
-            dry_run: true,
-        };
-        return emit_success(global.resolved_format(), resp, Metadata::new()
-            .with_extra("would_emit", serde_json::json!({
-                "command": "hello",
-                "request": req,
-            })));
-    }
-
-    let resp = HelloResponse {
-        greeting: format_greeting(&req),
-        dry_run: false,
+    let greeting = if req.shout {
+        format!("Hello, {}!", req.name).to_uppercase()
+    } else {
+        format!("Hello, {}!", req.name)
     };
-    emit_success(global.resolved_format(), resp, Metadata::new())
+
+    let metadata = if global.dry_run {
+        Metadata::new().with_extra(
+            "would_emit",
+            serde_json::json!({"command": "hello", "request": req}),
+        )
+    } else {
+        Metadata::new()
+    };
+
+    emit_success(
+        global.resolved_format(),
+        HelloResponse { greeting, dry_run: global.dry_run },
+        metadata,
+    )
 }
 
 fn build_request(args: &HelloArgs) -> Result<HelloRequest, CliError> {
@@ -73,25 +73,13 @@ fn build_request(args: &HelloArgs) -> Result<HelloRequest, CliError> {
         return serde_json::from_str(&body)
             .map_err(|e| CliError::validation(format!("--params-file payload: {e}")));
     }
-    let name = args
-        .name
-        .clone()
-        .ok_or_else(|| {
-            CliError::validation("missing required argument: NAME (or pass --json / --params-file)")
-                .with_suggestions([
-                    "mycli hello alice",
-                    "mycli hello --json '{\"name\":\"alice\",\"shout\":true}'",
-                    "echo '{\"name\":\"alice\"}' | mycli hello --params-file -",
-                ])
-        })?;
+    let name = args.name.clone().ok_or_else(|| {
+        CliError::validation("missing required argument: NAME (or pass --json / --params-file)")
+            .with_suggestions([
+                "mycli hello alice",
+                "mycli hello --json '{\"name\":\"alice\",\"shout\":true}'",
+                "echo '{\"name\":\"alice\"}' | mycli hello --params-file -",
+            ])
+    })?;
     Ok(HelloRequest { name, shout: args.shout })
-}
-
-fn format_greeting(req: &HelloRequest) -> String {
-    let g = format!("Hello, {}!", req.name);
-    if req.shout {
-        g.to_uppercase()
-    } else {
-        g
-    }
 }

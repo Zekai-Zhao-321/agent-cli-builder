@@ -1,108 +1,62 @@
 # Rust + clap agent-first CLI template
 
-A production-ready scaffold for an **agent-native CLI in Rust**, structured as a two-crate workspace. Already implements the twelve invariants from the parent `agent-cli-builder` skill — copy, rename via the scaffold script, fill in your commands, ship.
+A two-crate scaffold for an **agent-native CLI in Rust**. Ships the load-bearing primitives — output envelope, error taxonomy, validation, HTTP client with status mapping, schema introspection — so every CLI built from this template behaves the same way.
 
-## Why two crates
-
-```
-crates/mycli-core/   # the library (where the logic lives)
-crates/mycli-cli/    # the binary (a thin clap adapter over the library)
-```
-
-The split isn't ceremony — it's the **share-core** pattern in code form. The library cannot reach for `clap`, so business logic cannot couple to CLI parsing. When you add an `mycli-mcp` crate later, it depends on `mycli-core` exactly the way `mycli-cli` does. Both adapters call into the same `core/` library; no logic gets duplicated, no drift can creep in.
-
-## Directory layout
+## What's contract code (keep) vs filler (delete)
 
 ```
-mycli/
-├── Cargo.toml                    # workspace root + [workspace.dependencies]
-├── README.md                     # this file (replace with your CLI's README)
-├── rust-toolchain.toml           # pins stable toolchain
-├── deny.toml                     # cargo-deny config (license + advisory gates)
-├── .gitignore
-├── crates/
-│   ├── mycli-core/               # the library
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs            # forbid(unsafe_code), pub use modules
-│   │       ├── output.rs         # Envelope<T>, JSON/text rendering, NDJSON, control-char sanitization
-│   │       ├── errors.rs         # CliError + ErrorCode enum + exit_code() (thiserror)
-│   │       ├── validation.rs     # path-traversal / control-char / ID validators
-│   │       ├── http.rs           # reqwest wrapper, HTTP-status -> exit_code mapping
-│   │       ├── async_tasks.rs    # Task trait + LocalTaskStore
-│   │       └── schemas.rs        # serde + schemars-derived I/O types and JSON Schema export
-│   └── mycli-cli/                # the binary
-│       ├── Cargo.toml
-│       └── src/
-│           ├── main.rs           # tokio::main, top-level error wrap, exit code mapping
-│           ├── cli.rs            # clap derive: GlobalArgs + Commands enum
-│           └── commands/
-│               ├── mod.rs
-│               ├── hello.rs      # demo command end-to-end
-│               ├── schema.rs     # `schema show` + `schema output`
-│               └── task.rs       # `task get` / `task wait` / `task download`
-└── skills/
-    └── mycli/
-        └── SKILL.md              # the skill that ships with the binary
+crates/mycli-core/src/
+├── output.rs        ← contract: envelope shape, NDJSON, sanitization, TTY detection
+├── errors.rs        ← contract: ErrorCode taxonomy, exit-code mapping
+├── validation.rs    ← contract: path-traversal / control-char / ID validators
+├── http.rs          ← contract: HTTP-status -> exit-code mapping (uses rustls)
+├── async_tasks.rs   ← contract: Task / TaskStore trait / wait_for_terminal helper
+└── schemas.rs       ← contract: schema registry pattern (HelloRequest is a placeholder)
+
+crates/mycli-cli/src/
+├── main.rs          ← keep (top-level error wrap; tweak source tag if you want)
+├── cli.rs           ← keep (clap surface; add your subcommands here)
+└── commands/
+    ├── hello.rs     ← FILLER — delete after writing your first real command
+    ├── schema.rs    ← keep (drives schema show / schema output)
+    └── task.rs      ← FILLER — UnconfiguredStore is a placeholder; wire your real backend in make_store()
 ```
 
-## Quick start (after scaffolding)
+The filler files are there so the verifier has something to check after scaffolding. Once you've written one real command, delete `hello.rs` and replace `task.rs::make_store()` with your real backend.
+
+## Quick start
 
 ```bash
 cd mycli
 cargo install --path crates/mycli-cli --locked
 
-mycli hello world
 mycli hello world --output json
 mycli schema show hello
 mycli schema output hello
 echo '{"name":"alice","shout":true}' | mycli hello --params-file -
 ```
 
-Or run uninstalled from the workspace:
+## What you do next
 
-```bash
-cargo run -p mycli-cli -- hello world --output json
-```
-
-## What's already wired
-
-- **All 12 invariants pre-implemented.** See the parent skill at [`skills/agent-cli-builder/SKILL.md`](../../SKILL.md) for the list.
-- **Global flags** (`--output`, `--quiet`, `--non-interactive`, `--dry-run`, `--yes`, `--timeout`, `--verbose`) accepted both before and after subcommands.
-- **Output contract**: `stdout = data, stderr = UX`. Auto-JSON when stdout is non-TTY. NDJSON helper for paginated lists. Control-character sanitization at the envelope layer.
-- **Error envelope** with semantic exit codes. `error.suggestions: Vec<String>` ordered most-likely-fix first.
-- **HTTP client** (`mycli-core::http::HttpClient`) with HTTP-status → exit-code mapping (401/403 → AUTH=3, 429 → QUOTA=4, 5xx → NETWORK=6, etc.). Uses `rustls-tls-native-roots` so it picks up your system CA chain — works behind corporate proxies that inject a custom root into the OS trust store, no OpenSSL footgun.
-- **Schema introspection** via `schemars` derives. `mycli schema show <method>` returns the request+response JSON Schema; `mycli schema output <method>` returns the envelope shape. Both are auto-derived from the same `serde` types your code uses, so they cannot drift from the wire format.
-- **Input hardening** in `validation.rs`: rejects `?#%/\..` and control chars in IDs; sandboxes output paths to CWD.
-- **Async task pattern** in `async_tasks.rs`: `Task` trait + `LocalTaskStore` so any future > 5s command becomes async with a uniform `task get / wait / cancel / download` surface.
-- **Typo router** baked into clap (`suggestions` feature) — unknown commands emit `error: unrecognized subcommand 'helo'` `tip: a similar subcommand exists: 'hello'`. Matches the Python template's behaviour.
-- **`#![forbid(unsafe_code)]`** workspace-wide. Agent-driven Rust shouldn't need it.
-- **A starter shipped `SKILL.md`** in `skills/mycli/` ready to be filled in.
-
-## What you need to do next
-
-Follow the cold-start checklist in the parent [`skills/agent-cli-builder/SKILL.md`](../../SKILL.md):
-
-1. Replace the demo `hello` command in `crates/mycli-cli/src/commands/hello.rs` with your first real command.
-2. Add the corresponding request/response types in `crates/mycli-core/src/schemas.rs` — `derive(Serialize, Deserialize, JsonSchema)`. The schema commands pick them up automatically.
-3. If your CLI wraps a REST API, use `HttpClient::get/post/...` from `crates/mycli-core/src/http.rs` — HTTP status codes already map to the right exit codes.
-4. Fill in the recipes in `skills/mycli/SKILL.md` with your real workflows.
-5. Score the result against the agent-readiness rubric (see `references/evaluation.md` in the parent skill) before declaring shippable; aim for "Agent-ready" (≥ 65 %) at minimum.
+1. **Write your first command** in `crates/mycli-cli/src/commands/<name>.rs` and wire it into `cli.rs::Commands` and `commands/mod.rs::dispatch`.
+2. **Add request/response types** to `crates/mycli-core/src/schemas.rs` and register them in `registered_methods()`. They derive `Serialize + Deserialize + JsonSchema` so `mycli schema show` picks them up automatically.
+3. **Wire HTTP** if your CLI calls a service: use `mycli_core::http::HttpClient`. HTTP status codes already map to the right exit codes (401/403→AUTH=3, 429→QUOTA=4, 5xx→NETWORK=6, etc.).
+4. **Wire your task store** if you have async work: implement `TaskStore` for your backend in `commands/task.rs::make_store()`. The trait is just `get`. See `references/template_recipes.md` in the parent skill for a worked file-backed example.
+5. **Fill in the recipes** in `skills/mycli/SKILL.md` with your real workflows.
+6. **Score against the agent-readiness rubric** (see the parent skill's `references/evaluation.md`) before declaring shippable; aim for "Agent-ready" (≥ 65 %).
 
 ## Distribution
 
-The repo is set up for static-binary distribution out of the box:
+- `cargo install --path crates/mycli-cli --locked` — local install with reproducible deps
+- `cargo build --release` — stripped, LTO'd binary at `target/release/mycli` (typically ~6–10 MB)
+- `[profile.dist]` is pre-configured for [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) when you want signed multi-platform releases
 
-- `cargo install --path crates/mycli-cli --locked` — local install, single binary, reproducible deps
-- `cargo install --git https://github.com/your-org/mycli` — install from git
-- `cargo build --release` — produces a stripped, LTO'd binary at `target/release/mycli` (typically ~6–10 MB)
-- `[profile.dist]` is pre-configured for [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) when you're ready to publish signed multi-platform release artifacts
+## Why two crates
 
-## Idiomatic-Rust further reading
+`mycli-core` is the share-core: the only place that touches business logic. `mycli-cli` is a thin clap shell. When you add an `mycli-mcp` adapter later, it depends on `mycli-core` exactly the way `mycli-cli` does — no logic moves, no drift. See `references/mcp_layer.md` in the parent skill.
 
-The patterns in this template lean on a body of community-defined idioms. If you want to deepen your understanding of *why* the choices are what they are:
+## Further reading
 
-- [Niko Matsakis — Baby Steps](https://smallcultfollowing.com/babysteps/) — language design rationale, async, ownership
-- [Symposium](https://symposium.dev) — agent infrastructure for Rust projects (workspace + skills convention)
-- [The Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) — Naming, error type design, and trait conventions
-- [`googleworkspace/cli`](https://github.com/googleworkspace/cli) — a production agent-native CLI in Rust, the gold-standard reference; its `crates/` split inspired this template
+- [`googleworkspace/cli`](https://github.com/googleworkspace/cli) — production reference, two-crate Rust workspace, ships 90+ skills
+- [Niko Matsakis — Baby Steps](https://smallcultfollowing.com/babysteps/) — Rust language design rationale
+- [Symposium](https://symposium.dev) — agent infrastructure for Rust projects

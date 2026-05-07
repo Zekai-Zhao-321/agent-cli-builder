@@ -24,7 +24,9 @@ chrono = { workspace = true }
 regex = { workspace = true }
 url = { workspace = true }
 strsim = { workspace = true }
-dirs = { workspace = true }
+# `dirs` is in workspace dependencies but not pulled in here — the slim
+# template doesn't need it. Add `dirs = { workspace = true }` when you wire
+# a file-backed TaskStore. See references/template_recipes.md for an example.
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -1,71 +1,50 @@
 # Python + Typer agent-first CLI template
 
-A production-ready scaffold for an agent-native CLI in Python, using [Typer](https://typer.tiangolo.com/). Already implements the twelve invariants from the parent `agent-cli-builder` skill — copy, rename, fill in your commands, ship.
+A scaffold for an **agent-native CLI in Python** using [Typer](https://typer.tiangolo.com/). Ships the load-bearing primitives — output envelope, error taxonomy, validation, HTTP client with status mapping, schema introspection — so every CLI built from this template behaves the same way.
 
-## Directory layout
+## What's contract code (keep) vs filler (delete)
 
 ```
-mycli/
-├── pyproject.toml
-├── README.md                         # this file (replace with your CLI's README)
-├── src/
-│   └── mycli/
-│       ├── __init__.py
-│       ├── __main__.py               # `python -m mycli`
-│       ├── cli.py                    # Typer app: global flags + `hello`, `schema`, `task` subcommands
-│       ├── output.py                 # JSON / text formatter, TTY auto-detect, NDJSON
-│       ├── errors.py                 # exit code taxonomy, error envelope, top-level handler
-│       ├── validation.py             # input hardening: paths, IDs, control chars
-│       ├── async_tasks.py            # uniform task pattern: get / wait / cancel / download
-│       └── http.py                   # JSON HTTP client with HTTP-status → exit-code mapping
-└── skills/
-    └── mycli/
-        └── SKILL.md                  # the skill that ships with the binary
+src/mycli/
+├── output.py        ← contract: envelope, NDJSON, sanitization, TTY detection
+├── errors.py        ← contract: ExitCode taxonomy + error envelope
+├── validation.py    ← contract: path-traversal / control-char / ID / output-dir validators
+├── http.py          ← contract: HTTP-status -> exit-code mapping
+├── async_tasks.py   ← contract: Task / TaskStore protocol / wait_for helper
+└── cli.py           ← partly contract (schema show/output, dispatch),
+                       partly FILLER (`cmd_hello` is a demo; `_UnconfiguredStore`
+                       is a placeholder — wire your real store)
 ```
 
-## Quick start (after scaffolding)
+The filler bits (`cmd_hello`, `_UnconfiguredStore`) exist so the verifier has something to check after scaffolding. Once you've written one real command, delete `cmd_hello` and replace `_make_store()` with your real backend.
+
+## Quick start
 
 ```bash
 cd mycli
 pip install -e .
-mycli hello world
+
 mycli hello world --output json
-mycli schema hello
+mycli schema show hello
+mycli schema output hello
+echo '{"name":"alice","shout":true}' | mycli hello --params-file -
 ```
 
-## What's already wired
+## What you do next
 
-- **Global flags:** `--output`, `--quiet`, `--non-interactive`, `--dry-run`, `--yes`, `--timeout`, `--verbose`. Available both before and after the subcommand (agents naturally type the latter).
-- **Output contract:** stdout = data, stderr = UX. Auto-JSON when stdout is non-TTY. NDJSON helper for paginated lists.
-- **Error envelope:** structured `{ok:false, error:{code, exit_code, message, hint}}` with a documented exit-code taxonomy.
-- **Input hardening:** validators for resource IDs (rejects `?#%/\..` and control chars), file paths (sandboxed to CWD), and control characters.
-- **Async task pattern:** `task get`, `task wait`, `task cancel`, `download`. Backed by a local JSON store; swap in your service later.
-- **HTTP client:** `http.py` ships a small `HttpClient` that maps HTTP status codes to the CLI's exit codes (401/403 → 3, 429 → 4, 5xx → 6, etc.). Uses `urllib` so there's no external HTTP dep; replace with `httpx` or `requests` when you need async or retries.
-- **Schema introspection:** `mycli schema <command>` returns JSON Schema. The `hello` command has an example schema; copy the pattern for your commands.
-- **Shipped skill:** `skills/mycli/SKILL.md` is filled in for the example commands.
-
-## Adding your first real command
-
-1. Add a function in `cli.py` decorated with `@app.command()` (or `@svc_app.command()` for a service-grouped command).
-2. Define your inputs with Typer parameters; add `--json` / `--params-file` for the raw-payload pathway. Always include the global-options chain (`OPT_OUTPUT`, `OPT_QUIET`, ...) so agents can pass flags after the subcommand.
-3. Validate inputs at the top using helpers from `validation.py`.
-4. If your CLI wraps a REST API, instantiate `HttpClient(base_url=..., token=os.environ.get("MYCLI_TOKEN"))` and call `client.get(...)` / `client.post(...)`. HTTP errors automatically map to the right exit code.
-5. Build the request, then either:
-   - if `dry_run`: emit a structured `dry_run` payload via `output.emit_success(...)` and return.
-   - else: execute, then emit success.
-6. Add a schema entry under `SCHEMAS` in `cli.py` so `schema <command>` works. Use dotted method names that match the command path: `widgets.create`, `flags.list`, `task.get`.
-7. Add a recipe to `skills/mycli/SKILL.md` if the workflow has more than one step.
+1. **Write your first command** as a function in `cli.py` decorated with `@app.command(...)`. Always include the OPT_* parameters (`OPT_OUTPUT`, `OPT_QUIET`, ...) so agents can pass flags after the subcommand.
+2. **Add a SCHEMAS entry** under the dotted name that matches the command path (e.g. `widgets.create`, `flags.list`). `mycli schema show <method>` reads it; `mycli schema output <method>` synthesizes the envelope shape from `response`.
+3. **Wire HTTP** if your CLI calls a service: instantiate `HttpClient(base_url=..., token=os.environ.get("MYCLI_TOKEN"))` from `http.py`. HTTP status codes already map to the right exit codes (401/403→AUTH=3, 429→QUOTA=4, 5xx→NETWORK=6, etc.).
+4. **Wire your task store** if you have async work: implement the `TaskStore` Protocol for your backend in `cli.py::_make_store()`. The Protocol is just `get`. See `references/template_recipes.md` in the parent skill for a worked file-backed example with `cancel` + `list` + `download`.
+5. **Validate inputs** at the top of every command using `validate_resource_name` (and `validate_safe_output_dir` if you take a path).
+6. **Fill in the recipes** in `skills/mycli/SKILL.md` with your real workflows.
+7. **Score against the agent-readiness rubric** (see the parent skill's `references/evaluation.md`) before declaring shippable; aim for "Agent-ready" (≥ 65 %).
 
 ## Renaming the template
 
-The scaffold script (`scripts/scaffold.py` in the parent skill) does this for you. Manually:
+The scaffold script handles this. Manually you'd:
 
 1. Rename `src/mycli/` to `src/<your-cli>/`.
 2. Rename `skills/mycli/` to `skills/<your-cli>/`.
-3. In `pyproject.toml`, replace `mycli` with `<your-cli>`.
-4. In every `.py` and `.md` file, replace `mycli` with `<your-cli>` (case-sensitive).
-5. Update the description and recipes in `skills/<your-cli>/SKILL.md`.
-
-## Scoring
-
-After your first real commands work, score the result against the **agent-readiness rubric** (in the parent skill at `references/evaluation.md`). Eleven axes — nine always-applicable plus two conditional (async, MCP) — each weighted 1–3 by impact. Aim for **Agent-ready** (≥ 65 % of applicable max) before shipping; **Agent-first** (≥ 85 %) is the target for tools agents will run unattended at scale.
+3. Replace `mycli` with `<your-cli>` in `pyproject.toml`, `.py`, and `.md` files (case-sensitive *and* uppercase, so `MYCLI_TOKEN` becomes `<NAME>_TOKEN`).
+4. Update the description and recipes in `skills/<your-cli>/SKILL.md`.

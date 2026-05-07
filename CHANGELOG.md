@@ -12,6 +12,24 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
+## [0.2.1] — 2026-05-07
+
+Slim both scaffolds — ship the contract code, stop baby-stepping the agent on patterns it can write itself.
+
+### Changed
+
+- **Slimmed the Rust template.** `LocalTaskStore` removed from `mycli-core/src/async_tasks.rs` (~130 lines); the `TaskStore` trait now has a single `get` method. `commands/task.rs` keeps `get` and `wait` only (`cancel`, `list` removed) and dispatches against an `UnconfiguredStore` placeholder that returns a structured "not configured" error pointing at the recipes file. `commands/hello.rs` tightened (~80 → ~60 lines, no standalone helper). Template `README.md` rewritten to lead with "what's contract code (keep) vs filler (delete)". Shipped `skills/mycli/SKILL.md` slimmed (~170 → ~100 lines).
+- **Slimmed the Python template.** `LocalTaskStore` removed from `async_tasks.py` (~80 lines); the module now exports a `TaskStore` Protocol and the `wait_for` helper. `cli.py`'s `cmd_task_list`, `cmd_task_cancel`, and `cmd_download` removed (~100 lines); `cmd_hello` tightened. The `task_app` dispatches against an `_UnconfiguredStore` placeholder. Template `README.md` rewritten to match the Rust framing. Shipped `skills/mycli/SKILL.md` slimmed.
+- **`SKILL.md`** Step 5 description updated to reflect the slimmed templates and points readers at `references/template_recipes.md` for the patterns that aren't shipped by default.
+
+### Added
+
+- **[`references/template_recipes.md`](skills/agent-cli-builder/references/template_recipes.md)** — worked implementations for the patterns no longer in the scaffolds: a file-backed `LocalTaskStore` with `cancel` + `list` (Rust and Python), `download` with sandboxed output paths, and how to add a new method to the schema registry. The recipes file explains *why* these aren't in the templates by default: a file-backed task store is wrong for ~95 % of real CLIs, and shipping it as the default would propagate the wrong default.
+
+### Why
+
+Agents already know how to write Rust and Python. They know how to read JSON from disk, iterate a directory, write a function. What they don't reliably know is the *opinionated* parts of an agent-native CLI — the envelope shape, the exit-code taxonomy, the HTTP-status → exit-code mapping, the input-hardening rules, the schema-introspection pattern. Those are the things that drift between hand-written CLIs and so those are the things the templates ship as code. The rest belonged in `references/`. v0.2.0 over-shipped (~600 lines of demo `LocalTaskStore` / `task list` / `task cancel` / `download`); v0.2.1 fixes that.
+
 ## [0.2.0] — 2026-05-07
 
 ### Added
@@ -77,6 +95,7 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/releases/tag/v0.1.0

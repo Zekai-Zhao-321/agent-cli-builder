@@ -48,10 +48,10 @@ from typing import Any, Optional
 import click
 import typer
 
-from .async_tasks import LocalTaskStore, wait_for
+from .async_tasks import Task, TaskStore, wait_for
 from .errors import CliError, ExitCode, ValidationError
 from .output import Output, detect_format
-from .validation import validate_resource_name, validate_safe_output_dir
+from .validation import validate_resource_name
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +365,10 @@ def cmd_schema_output(
 
 
 # ---------------------------------------------------------------------------
-# Demo command: `mycli hello <name>`. Replace with your own.
+# Demo command: `mycli hello <name>`. **Replace with your first real command.**
+#
+# It exists to exercise the contract surface end-to-end (envelope, dry-run,
+# validation, raw-payload pathway) so the verifier has something to check.
 
 
 @app.command(name="hello")
@@ -395,16 +398,13 @@ def cmd_hello(
         non_interactive=non_interactive, dry_run=dry_run, yes=yes, timeout=timeout,
         parent=ctx.obj,
     )
-    out = state.output
 
     payload: dict[str, Any] = {}
     if json_str is not None:
         payload.update(json.loads(json_str))
     if params_file is not None:
-        if params_file == "-":
-            payload.update(json.load(sys.stdin))
-        else:
-            payload.update(json.loads(Path(params_file).read_text()))
+        body = sys.stdin.read() if params_file == "-" else Path(params_file).read_text()
+        payload.update(json.loads(body))
     if name is not None:
         payload.setdefault("name", name)
     if shout:
@@ -424,28 +424,46 @@ def cmd_hello(
         target = typer.prompt("Who should I greet?")
 
     target = validate_resource_name(target, field="name")
+    msg = f"hello, {target}"
+    greeting = msg.upper() if payload.get("shout", False) else msg
 
     if state.dry_run:
-        out.emit_success(
-            {
-                "dry_run": True,
-                "would_emit": {"greeting": _greeting(target, payload.get("shout", False))},
-            }
-        )
+        state.output.emit_success({"dry_run": True, "would_emit": {"greeting": greeting}})
         return
-
-    out.emit_success({"greeting": _greeting(target, payload.get("shout", False))})
-
-
-def _greeting(name: str, shout: bool) -> str:
-    msg = f"hello, {name}"
-    return msg.upper() if shout else msg
+    state.output.emit_success({"greeting": greeting})
 
 
 # ---------------------------------------------------------------------------
-# Task subcommands: `mycli task get|wait|list|cancel` and `mycli download`.
+# Task subcommands: `mycli task get` and `mycli task wait`.
+#
+# `TaskStore` is a Protocol; the template doesn't ship a concrete
+# implementation because real backends differ (file, SQLite, HTTP service).
+# Replace `_make_store()` with your real backend. The `cancel`, `list`, and
+# `download` patterns live in references/template_recipes.md in the parent skill.
 
-task_app = typer.Typer(help="Inspect and control async tasks.")
+
+def _make_store() -> TaskStore:
+    """Construct the task store. Replace with your real backend."""
+    return _UnconfiguredStore()
+
+
+class _UnconfiguredStore:
+    """Placeholder TaskStore. Returns a clear, actionable error so the agent
+    knows what to wire when `mycli task get` runs without a real store."""
+
+    def get(self, task_id: str) -> Task:
+        raise CliError(
+            code="STORE_NOT_CONFIGURED",
+            exit_code=ExitCode.GENERAL,
+            message="no TaskStore configured; wire one in cli.py::_make_store()",
+            suggestions=[
+                "See references/template_recipes.md for a file-backed example.",
+                "Or replace _UnconfiguredStore with your service-backed implementation.",
+            ],
+        )
+
+
+task_app = typer.Typer(help="Inspect async tasks. Get + wait only; extend in your CLI.")
 app.add_typer(task_app, name="task")
 
 
@@ -464,55 +482,7 @@ def cmd_task_get(
         parent=ctx.obj,
     )
     validate_resource_name(task_id, field="task_id")
-    store = LocalTaskStore()
-    task = store.get(task_id)
-    state.output.emit_success(task.to_dict())
-
-
-@task_app.command(name="list")
-def cmd_task_list(
-    ctx: typer.Context,
-    state_filter: Optional[str] = typer.Option(
-        None, "--state", help="queued|running|succeeded|failed|cancelled"
-    ),
-    output: Optional[str] = OPT_OUTPUT,
-    quiet: bool = OPT_QUIET,
-    verbose: bool = OPT_VERBOSE,
-) -> None:
-    """List known tasks (NDJSON, one envelope per line)."""
-    state = build_state(
-        output=output, quiet=quiet, verbose=verbose,
-        non_interactive=None, dry_run=False, yes=False, timeout=60.0,
-        parent=ctx.obj,
-    )
-    store = LocalTaskStore()
-    tasks = store.list(state=state_filter)  # type: ignore[arg-type]
-    n = state.output.emit_ndjson((t.to_dict() for t in tasks))
-    state.output.debug(f"emitted {n} task(s)")
-
-
-@task_app.command(name="cancel")
-def cmd_task_cancel(
-    ctx: typer.Context,
-    task_id: str = typer.Argument(...),
-    output: Optional[str] = OPT_OUTPUT,
-    quiet: bool = OPT_QUIET,
-    verbose: bool = OPT_VERBOSE,
-    dry_run: bool = OPT_DRY,
-    yes: bool = OPT_YES,
-) -> None:
-    state = build_state(
-        output=output, quiet=quiet, verbose=verbose,
-        non_interactive=None, dry_run=dry_run, yes=yes, timeout=60.0,
-        parent=ctx.obj,
-    )
-    validate_resource_name(task_id, field="task_id")
-    store = LocalTaskStore()
-    if state.dry_run:
-        task = store.get(task_id)
-        state.output.emit_success({"dry_run": True, "would_cancel": task.to_dict()})
-        return
-    task = store.cancel(task_id)
+    task = _make_store().get(task_id)
     state.output.emit_success(task.to_dict())
 
 
@@ -533,56 +503,14 @@ def cmd_task_wait(
         parent=ctx.obj,
     )
     validate_resource_name(task_id, field="task_id")
-    store = LocalTaskStore()
     state.output.progress(f"waiting on {task_id}")
     task = wait_for(
-        store,
+        _make_store(),
         task_id,
         timeout_seconds=state.timeout,
         poll_interval_seconds=poll_interval,
     )
     state.output.emit_success(task.to_dict())
-
-
-@app.command(name="download")
-def cmd_download(
-    ctx: typer.Context,
-    task_id: str = typer.Argument(...),
-    to: str = typer.Option(".", "--to", help="Output directory (sandboxed to CWD)."),
-    output: Optional[str] = OPT_OUTPUT,
-    quiet: bool = OPT_QUIET,
-    verbose: bool = OPT_VERBOSE,
-    dry_run: bool = OPT_DRY,
-) -> None:
-    """Download the result of a completed task."""
-    state = build_state(
-        output=output, quiet=quiet, verbose=verbose,
-        non_interactive=None, dry_run=dry_run, yes=False, timeout=60.0,
-        parent=ctx.obj,
-    )
-    validate_resource_name(task_id, field="task_id")
-    safe_dir = validate_safe_output_dir(to)
-    store = LocalTaskStore()
-    task = store.get(task_id)
-    if task.state != "succeeded":
-        raise ValidationError(
-            f"task {task_id} is in state '{task.state}', not 'succeeded'",
-            suggestions=[
-                "Wait for the task with `mycli task wait <id>` before downloading.",
-                "Inspect state with `mycli task get <id>`.",
-            ],
-        )
-    if state.dry_run:
-        state.output.emit_success(
-            {"dry_run": True, "would_write": {"path": str(safe_dir / f"{task_id}.json")}}
-        )
-        return
-    safe_dir.mkdir(parents=True, exist_ok=True)
-    out_path = safe_dir / f"{task_id}.json"
-    out_path.write_text(json.dumps(task.to_dict(), indent=2))
-    state.output.emit_success(
-        {"path": str(out_path), "size_bytes": out_path.stat().st_size}
-    )
 
 
 # ---------------------------------------------------------------------------

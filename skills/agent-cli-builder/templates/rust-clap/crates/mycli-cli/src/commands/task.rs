@@ -1,20 +1,22 @@
-//! `mycli task get|wait|cancel|list` — uniform task lifecycle.
+//! `mycli task get` and `mycli task wait` — the minimal contract.
 //!
-//! The default backend is the local file store from
-//! `mycli_core::async_tasks::LocalTaskStore`. Swap in your own `TaskStore`
-//! impl when the backend is a real service.
+//! `mycli-core::async_tasks::TaskStore` is a trait; the template doesn't
+//! ship a concrete implementation because real backends differ
+//! (file, SQLite, HTTP service). Wire your store below in `make_store()`.
+//! `references/template_recipes.md` in the parent skill has a working
+//! file-backed example you can drop in.
 
 use std::time::Duration;
 
-use mycli_core::async_tasks::{LocalTaskStore, TaskState, TaskStore as _, wait_for_terminal};
+use mycli_core::async_tasks::{Task, TaskStore, wait_for_terminal};
 use mycli_core::errors::CliError;
-use mycli_core::output::{Metadata, emit_ndjson, emit_success};
+use mycli_core::output::{Metadata, emit_success};
 use mycli_core::validation::validate_resource_id;
 
 use crate::cli::{GlobalArgs, TaskSub};
 
 pub async fn run(sub: &TaskSub, global: &GlobalArgs) -> Result<(), CliError> {
-    let store = LocalTaskStore::new(LocalTaskStore::default_root()?)?;
+    let store = make_store()?;
     match sub {
         TaskSub::Get { task_id } => {
             validate_resource_id(task_id)?;
@@ -32,28 +34,27 @@ pub async fn run(sub: &TaskSub, global: &GlobalArgs) -> Result<(), CliError> {
             .await?;
             emit_success(global.resolved_format(), task, Metadata::new())
         }
-        TaskSub::Cancel { task_id } => {
-            validate_resource_id(task_id)?;
-            let task = store.cancel(task_id).await?;
-            emit_success(global.resolved_format(), task, Metadata::new())
-        }
-        TaskSub::List { state } => {
-            let filter = state.as_deref().map(parse_state).transpose()?;
-            let tasks = store.list(filter).await?;
-            emit_ndjson(tasks, Metadata::new())
-        }
     }
 }
 
-fn parse_state(s: &str) -> Result<TaskState, CliError> {
-    match s.to_ascii_lowercase().as_str() {
-        "pending" => Ok(TaskState::Pending),
-        "running" => Ok(TaskState::Running),
-        "succeeded" => Ok(TaskState::Succeeded),
-        "failed" => Ok(TaskState::Failed),
-        "cancelled" | "canceled" => Ok(TaskState::Cancelled),
-        other => Err(CliError::validation(format!(
-            "unknown task state: {other}. Valid: pending, running, succeeded, failed, cancelled"
-        ))),
+/// Construct the task store. Replace with your real backend.
+fn make_store() -> Result<UnconfiguredStore, CliError> {
+    Ok(UnconfiguredStore)
+}
+
+/// Placeholder TaskStore. Returns AUTH-style "not configured" errors so the
+/// CLI compiles and the agent gets a clear, actionable failure if the user
+/// runs `mycli task get` without wiring a real store first.
+struct UnconfiguredStore;
+
+impl TaskStore for UnconfiguredStore {
+    async fn get(&self, _id: &str) -> Result<Task, CliError> {
+        Err(CliError::internal(
+            "no TaskStore configured; wire one in commands/task.rs::make_store()",
+        )
+        .with_suggestions([
+            "See references/template_recipes.md for a file-backed example.",
+            "Or replace UnconfiguredStore with your service-backed implementation.",
+        ]))
     }
 }

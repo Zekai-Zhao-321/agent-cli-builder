@@ -100,7 +100,9 @@ pub enum Commands {
         sub: SchemaSub,
     },
 
-    /// Async task lifecycle — `get`, `wait`, `cancel`, `list`, `download`.
+    /// Async task introspection — `get` and `wait`. Add `cancel`, `list`,
+    /// and `download` when your backend supports them; see
+    /// `references/template_recipes.md` in the parent skill.
     Task {
         #[command(subcommand)]
         sub: TaskSub,
@@ -124,21 +126,7 @@ pub enum SchemaSub {
 #[derive(Debug, Subcommand)]
 pub enum TaskSub {
     /// Fetch task state once.
-    Get {
-        task_id: String,
-    },
+    Get { task_id: String },
     /// Block until the task reaches a terminal state or timeout.
-    Wait {
-        task_id: String,
-    },
-    /// Request cancellation.
-    Cancel {
-        task_id: String,
-    },
-    /// Stream tasks as NDJSON.
-    List {
-        /// Filter by state (pending, running, succeeded, failed, cancelled).
-        #[arg(long)]
-        state: Option<String>,
-    },
+    Wait { task_id: String },
 }
