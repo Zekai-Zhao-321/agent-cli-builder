@@ -1,0 +1,81 @@
+# --- agent-cli-builder workspace artifacts ----------------------------------
+# Scratch directories produced while developing the skill itself (eval runs,
+# scaffold smoke tests, cold-start research caches). Anything starting with
+# `.` followed by `eval`, `scaffold`, `research`, or `scratch` is ignored.
+.eval/
+.eval-*/
+.eval[0-9]*/
+.scaffold-test/
+.scaffold-*/
+.research/
+.research_v2/
+.research-*/
+.scratch/
+.scratch-*/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# pytest / coverage / type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- IDEs / editors ---------------------------------------------------------
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Secrets ----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Logs -------------------------------------------------------------------
+*.log
+logs/

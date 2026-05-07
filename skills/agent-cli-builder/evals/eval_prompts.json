@@ -1,0 +1,118 @@
+{
+  "skill_name": "agent-cli-builder",
+  "evals": [
+    {
+      "id": 1,
+      "name": "cold-start-feature-flags",
+      "category": "cold-start",
+      "prompt": "I want to build a CLI called `ff` for our internal feature-flag service. Agents on Claude Code will use it to list flags, check rollout status across environments, and toggle flags. The backend is a REST API at `https://flags.acme.internal/v1`, auth is a static service token in env `FF_TOKEN`. Help me get started — scaffold the project and walk me through what to fill in next.",
+      "expected_outputs": [
+        "scaffolded project at user-chosen path with `ff` substituted for `mycli` (case-insensitive rename so FF_TOKEN, FF_OUTPUT, FF_HOME all land correctly)",
+        "explanation of the cold-start checklist applied to this domain, including the FF_TOKEN auth precedence and the do-NOT-run-auth-login-from-agent gotcha",
+        "specific guidance on the raw-payload pathway (--json / --params-file / stdin) for toggle / patch operations, with --dry-run before the live call",
+        "shipped SKILL.md draft customized for `ff` with feature-flag recipes, cross-skill negative triggers (Do NOT use for ...) and token-cost annotations on commands",
+        "use of HttpClient from src/ff/http.py for REST integration, with HTTP-status \u2192 exit-code mapping",
+        "pointer to scoring against the agent-readiness rubric (see references/evaluation.md) before declaring shippable; explicit note that conditional axes (async, MCP) may be N/A here"
+      ],
+      "verifier": {
+        "kind": "transcript-and-state",
+        "checks": [
+          "scaffold script invoked with --name ff",
+          "SCHEMAS dict in cli.py extended with at least one flags-related method, including the `output` key (envelope schema) or relying on _envelope_schema_for synthesis",
+          "skills/ff/SKILL.md mentions FF_TOKEN env var precedence and the auth-login-is-human-only rule",
+          "skills/ff/SKILL.md includes a recipe with --dry-run before toggling and a cross-skill negative-trigger description",
+          "transcript references the agent-readiness rubric (not the older agent-dx-cli-scale)"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "name": "retrofit-click-cli",
+      "category": "retrofit",
+      "prompt": "I have a Click-based Python CLI called `incd` that wraps our incident management API. Agents on Claude Code keep getting confused — they fail to parse error output (currently a Python traceback), they hang waiting on `click.confirm` prompts, they retry inappropriately on auth failures, and they don't know which commands are safe to retry. The CLI has about 12 commands across 3 services (incidents, on-call, postmortems). Bring it up to agent-first standards. Don't rewrite it; iterate.",
+      "expected_outputs": [
+        "explicit reference to references/retrofit_playbook.md and the 12-step shippable order",
+        "specific Click-to-agent-first diffs: --output json with {ok, data, metadata} envelope, stderr-only progress, error envelope with error.suggestions: list[str]",
+        "exit-code taxonomy applied to existing exception classes, with HTTP status \u2192 exit code mapping",
+        "non-interactive flag added with TTY-auto-detect default; click.confirm wrapped to fail fast in non-interactive",
+        "shipped SKILL.md skeleton noting do-not-run-auth-login-from-agent, with cross-skill negative triggers and per-command token-cost annotations",
+        "no full rewrite recommended; each step independently shippable",
+        "agent-readiness rubric used to identify the weakest axis to fix first (almost certainly Output contract or Error contract)"
+      ],
+      "verifier": {
+        "kind": "transcript-pattern",
+        "checks": [
+          "transcript references retrofit_playbook.md or its 12-step ordering",
+          "transcript proposes shippable diffs rather than full rewrites",
+          "transcript explains exit-code mapping for existing exceptions",
+          "transcript names error.suggestions (plural) not error.hint"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "name": "architecture-cli-vs-mcp",
+      "category": "decision",
+      "prompt": "We have an MCP server for our analytics platform with hundreds of API endpoints exposed as tools. Claude users are reporting that the agent gets overwhelmed by tool definitions and burns context on irrelevant tools. Should we add a CLI? Skills? Replace the MCP entirely? Recommend an architecture given we have ~300 API endpoints and a wide variety of agent users (some on Claude Code, some on Claude.ai, some via API).",
+      "expected_outputs": [
+        "explicit two-pattern framing: CLI-only as the default, share-core (CLI + MCP) only when a specific consumer cannot shell out (Claude.ai, Gemini Extensions) or per-tool allowlist granularity is needed",
+        "MCP-only is named as an anti-pattern (no debugability, no composability)",
+        "recommendation: build a dynamic-schema CLI with `cli schema show` + `cli schema output`, layer skills (shared / service / helper / persona / recipe), and keep the MCP as a thin adapter with the error-boundary decorator over the same core/",
+        "explanation of why MCP-only is brittle at this scale (the dictionary problem; tool-definition context cost grows with surface)",
+        "concrete pointer to references/mcp_layer.md for the thin-adapter rules and references/shipping_skills.md for layered skills",
+        "pointer to scoring against the agent-readiness rubric, including both conditional axes (async if any analytics queries are slow; MCP since they will keep MCP)"
+      ],
+      "verifier": {
+        "kind": "transcript-pattern",
+        "checks": [
+          "transcript discusses MCP context-window cost at scale (the dictionary problem)",
+          "transcript recommends layered skills, not one giant skill",
+          "transcript names schema introspection (both `schema show` and `schema output`) as the discovery mechanism",
+          "transcript names the share-core pattern explicitly, distinguishing it from subprocess-wrap-CLI"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "name": "score-without-evidence",
+      "category": "guardrail",
+      "prompt": "Score my CLI against the agent-readiness rubric. Give me a number out of 60.",
+      "expected_outputs": [
+        "agent does NOT produce a numeric score; refuses on grounds of missing evidence",
+        "agent names the minimum evidence needed to score (top-level --help, one success JSON sample, one error sample with stdout/stderr captured separately, optionally schema outputs and shipped SKILL.md)",
+        "agent offers to do a qualitative read of the CLI from a README/description if that's all the user can supply, labeling it clearly as 'read of stated intent, not a measured score'",
+        "agent does NOT hallucinate a CLI name or assume the user has any specific tool"
+      ],
+      "verifier": {
+        "kind": "transcript-pattern",
+        "checks": [
+          "transcript does NOT contain a numeric score like '52/60' or '0/60'",
+          "transcript explicitly asks for at least one of: --help, success sample, error sample, source code",
+          "transcript references references/evaluation.md or the 'evidence required' section",
+          "transcript distinguishes a measured score from a qualitative read of stated intent"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "name": "retrofit-audit-first",
+      "category": "retrofit",
+      "prompt": "Here's our CLI: it's a Python tool called `obs` for our observability platform, ~25 commands across logs, traces, and incidents. Bring it up to agent-first standards.",
+      "expected_outputs": [
+        "agent does NOT immediately propose a 12-step retrofit; FIRST asks for or describes the audit step (Step 0) needed to scope the work",
+        "agent asks for: top-level --help, one success JSON, one error sample, one large-result, and identifies what to inspect in the source",
+        "agent explains that the audit produces a one-page diagnosis mapping each of the 12 steps to current state (needed / partial / not needed)",
+        "agent only proposes specific changes after the audit data is in hand (or explicitly says 'assuming a typical Click CLI without machine output, here's what the audit would likely find...')",
+        "agent mentions drift surface (help, shipped SKILL.md, MCP if any) as part of the audit"
+      ],
+      "verifier": {
+        "kind": "transcript-pattern",
+        "checks": [
+          "transcript names 'audit' or 'Step 0' or 'measure before changing' before applying retrofit changes",
+          "transcript asks for at least 3 of: --help output, success JSON, error sample, large-result, source code locations",
+          "transcript references retrofit_playbook.md and command_registry.md (or names drift testing)"
+        ]
+      }
+    }
+  ]
+}
