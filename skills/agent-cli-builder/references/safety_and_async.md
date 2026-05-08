@@ -208,6 +208,52 @@ Even when the user is human and would happily wait 90 seconds, async splitting:
 
 If the underlying API only does sync, your CLI can still expose async by spawning a background helper that polls and persists task state in `~/.cache/<cli>/tasks/`. The agent surface stays clean even if the implementation has to fake it.
 
+### `--wait` alongside `--async`
+
+Both `--async` (return a task id; agent polls or composes other work) and `--wait` (block until terminal; CLI runs the polling loop with backoff internally) are legitimate, and the strongest CLIs ship both:
+
+- **`--async` wins** when the agent fans out many jobs in parallel, when the wait would exceed the harness's per-call timeout (codex 10 s, opencode 2 min), or when the agent is composing the next steps while the job runs.
+- **`--wait` wins** when the agent is doing one job at a time and the wait fits within the harness budget. It collapses the create / poll / collect loop into one tool call. Less code for the agent to write; lower error surface in the polling logic.
+
+Implementation pattern for `--wait`: poll with exponential backoff (e.g. 1 s → 2 s → 5 s → 15 s, capped), retry transient `5xx` and `429` automatically, default `--timeout` to something honest (5–20 minutes depending on workload) and *let the timeout be visible in the contract*.
+
+The non-obvious detail: when `--wait` times out without the job finishing, exit with a distinct code (e.g. `5 = TIMEOUT`) **and emit the partial resource on stdout** — the agent's next turn picks up via `task get <id>` against the same id, no resubmission. Without the partial-resource-on-stdout part, a timeout under `--wait` looks indistinguishable from "the job failed", and the agent is forced to re-submit (creating a duplicate).
+
+```json
+{"ok": false,
+ "error": {"code": "WAIT_TIMEOUT", "exit_code": 5, "message": "task did not complete within 1200s",
+           "suggestions": ["Run `mycli task get tsk_abc` later to check status."]},
+ "data": {"task_id": "tsk_abc", "state": "running", "progress": 0.7},
+ "metadata": {"source": "mycli v0.1.0"}}
+```
+
+### Persistent job ledger for disconnect recovery
+
+The async split addresses *fan-out*; it doesn't yet address *disconnect recovery*. If the agent's first invocation submits a job and then loses connection mid-poll (the harness killed the call, the network blipped, the user interrupted), the second invocation needs to find the in-flight job, not start a new one.
+
+The pattern: persist a local JSONL ledger of submitted jobs at a stable path (`~/.cache/<cli>/jobs.jsonl` or `~/.<cli>/jobs.jsonl`), keyed by an idempotency token the agent passes (or the upstream API returns at submit). Expose three commands against it:
+
+- `cli jobs list [--state STATE]` — see in-flight + recent jobs across sessions
+- `cli jobs get <id>` — fetch the latest known state (with a refresh against upstream)
+- `cli jobs prune [--older-than DAYS]` — clear old entries
+
+The agent's recovery flow becomes one more turn instead of a duplicate submission:
+
+```bash
+# session 1: submit, poll once, then connection drops
+$ mycli video render --prompt "..." --wait --idempotency-key=run-2026-05-08-a
+^C  # killed
+
+# session 2 (next turn or next conversation): find what's still running
+$ mycli jobs list --state running
+{"data": [{"task_id": "tsk_abc", "kind": "video.render", "started_at": "...", "idempotency_key": "run-2026-05-08-a"}], "metadata": {...}}
+
+# resume against the existing job — no duplicate submission
+$ mycli task wait tsk_abc
+```
+
+The idempotency-across-the-arc rule: if the agent retries a `--wait` invocation with the same idempotency key, the CLI looks up the ledger, finds the existing in-flight job, and resumes polling against it instead of re-submitting. Submission idempotency alone (the upstream API returning the existing resource on duplicate POST) covers the create call but not the wait — the ledger covers the whole arc.
+
 ## Idempotency
 
 Agents retry. Make retries cheap:

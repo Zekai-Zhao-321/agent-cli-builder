@@ -137,6 +137,15 @@ agent: parses .data.id from output, knows where to find it.
 
 This replaces "load the man page into the system prompt", which costs tokens *and* goes stale the moment the API version increments.
 
+### Per-method `schema show` vs top-level `agent-context`
+
+Two reasonable shapes for runtime introspection, with different cost profiles:
+
+- **Per-method `cli schema show <method>`** — the agent fetches one method's shape on demand. Cheap when the agent only cares about a few methods per task. Default for narrow CLIs.
+- **Top-level `cli agent-context`** — returns the *full* command surface in one machine-readable JSON dump, with a `schema_version` field for breaking-change detection. Costs more tokens per call but lets the agent build a complete mental model in one turn. Useful for large platform CLIs where the agent will touch many methods in one task.
+
+Pick based on shape. A docs-reader CLI with 11 commands probably doesn't need a top-level `agent-context`; per-method `schema show` is enough. A platform CLI with hundreds of commands often benefits from a versioned top-level dump as the entry point, with per-method schemas as the drill-down. They're not mutually exclusive — ship both if it's worth the test surface, and have the top-level dump cite per-method schemas as the deeper reference.
+
 ## Handling unknown commands
 
 Agents make two kinds of command mistakes that humans rarely make:

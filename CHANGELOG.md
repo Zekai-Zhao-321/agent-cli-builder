@@ -12,6 +12,26 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
+## [0.4.1] — 2026-05-08
+
+Refinements drawn from cross-pollinating the v0.4.0 lens against several agent-first CLIs in the wild (`gws`, `heygen-cli`, the rebuilt `cf`/Wrangler, `openai`). Sharpens existing patterns; doesn't add a new top-level frame. No SKILL.md restructure, no template touches.
+
+### Added
+
+- **`SKILL.md` "Predictable grammar" pattern**: widens beyond intra-CLI predictability to **ecosystem-wide vocabulary consistency**. Agents build a generalized model from every CLI they've ever seen — your CLI lives next to `gh`, `kubectl`, `aws`, `wrangler`. Match the verbs and flag forms the agent already has muscle memory for; deviate only with strong reason. For large CLI surfaces, mechanical schema-driven enforcement outscales human review at keeping vocabulary consistent.
+- **`SKILL.md` "Reference CLIs worth studying"**: expanded from a single canonical pointer (`gws`) to a neutral 4-row table — `gws` (platform CLI, dynamic schema), `heygen-cli` (single-product, agent-first by design, offline `--request-schema` / `--response-schema`, binary download emits JSON on stdout), Cloudflare's `cf`/Wrangler rebuild (TypeScript-schema-as-source-of-truth generating CLI + SDKs + Terraform + MCP, mechanical vocabulary enforcement), `openai` (clean Go single-static-binary distribution). Framed as examples on the design space rather than a canon — the right reference is the one whose domain shape matches yours.
+- **[`references/output_contract.md`](skills/agent-cli-builder/references/output_contract.md)**: new "Enumerate the valid set when rejecting an enum" subsection — when the cause of a validation error is a schema-bounded field, the message names the valid set inline so the agent recovers in one retry instead of a `--help` round-trip. New "Binary outputs still emit JSON on stdout" subsection — write the binary to disk, emit `{path, size_bytes, mime_type}` JSON to stdout so chaining works uniformly across binary and non-binary commands. New "Stable application error codes" note — `error.code` strings are a finer-grained branching surface than exit codes for the agent.
+- **[`references/safety_and_async.md`](skills/agent-cli-builder/references/safety_and_async.md)**: new "`--wait` alongside `--async`" subsection — both shapes are legitimate; `--async` for fan-out and longer-than-harness-timeout work, `--wait` for one-job-at-a-time inside the harness budget. The non-obvious detail: when `--wait` times out, exit with a distinct code AND emit the partial resource on stdout so the next turn picks up via `task get <id>` against the same id, no duplicate submission. New "Persistent job ledger for disconnect recovery" subsection — `~/.cache/<cli>/jobs.jsonl` keyed by idempotency token, `cli jobs list/get/prune` to inspect and recover. Submission idempotency alone covers the create call but not the wait; the ledger covers the whole submit-poll-collect arc.
+- **[`references/auth_strategies.md`](skills/agent-cli-builder/references/auth_strategies.md)**: pipe-to-auth-login pattern (`echo "$KEY" | mycli auth login`) called out as the agent-friendly install path — token doesn't appear in shell history or `ps`. Preferred over `mycli auth login --token <KEY>`.
+- **[`references/input_and_payloads.md`](skills/agent-cli-builder/references/input_and_payloads.md)**: new "Per-method `schema show` vs top-level `agent-context`" note — for large platform CLIs, an alternative is a top-level versioned schema dump (`cli agent-context` returning the full surface in one call with a `schema_version` field) instead of (or alongside) per-method `schema show`. Pick by shape: narrow CLIs default to per-method, wide platform CLIs benefit from the top-level entry point.
+- **[`references/think_like_an_agent.md`](skills/agent-cli-builder/references/think_like_an_agent.md)** closing checklist gains a 7th question: *"Does my CLI live in an ecosystem with conventions? Am I matching the vocabulary the agent already has muscle memory for?"*
+
+### Why
+
+The v0.4.0 lens (think like an agent) is the right framing; it just hadn't been cross-pressure-tested against multiple agent-first CLIs in production yet. Reading them surfaced patterns that fit the lens but weren't yet articulated in the references — most notably, error-enumerate-the-valid-set (refines our suggestions list), the persistent-job-ledger gap in our async story (we covered submission idempotency but not the whole arc), and ecosystem-wide vocabulary consistency (our predictable-grammar pattern only enforced intra-CLI consistency before).
+
+Deliberately *not* adopted, despite appearing in the source material: profile systems (domain-specific), `--deliver=webhook:` output routing (niche to binary-producing CLIs), `cli feedback` upstream channels (team-specific, easy to make preachy). The line for inclusion was "fits the lens AND is broadly useful AND can be described without prescribing exact words." Cross-CLI vocabulary is included as the *principle* (match the ecosystem) without dictating the vocabulary list — that's the kind of babystepping the v0.3.x refactors deliberately moved away from.
+
 ## [0.4.0] — 2026-05-08
 
 Add the lens. The skill teaches CLI patterns; this version teaches the *perspective* the patterns came from. The agent reading this skill is itself the kind of mind they're designing for, and that fact — used directly — is the world's best ground truth on what an agent CLI needs.
@@ -169,7 +189,8 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...v0.3.0

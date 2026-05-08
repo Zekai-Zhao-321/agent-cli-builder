@@ -82,6 +82,8 @@ These hold regardless of granularity choice, loading model, or read/write split.
 
 **Predictable grammar.** `cli <resource> <verb>` for single products; `cli <service> <resource> <method>` for platforms; `cli <service> +<helper>` for multi-step convenience commands. Predictable grammar lets agents pattern-complete the next command without `--help` round-trips. Mixing styles (`generate-video` and `cli video generate` in the same tool) is the single most common ergonomic failure.
 
+Worth widening one beat: agents don't memorize one CLI at a time, they build a generalized model from every CLI they've ever seen. Your CLI lives in an ecosystem (`gh`, `kubectl`, `aws`, `wrangler`, …); the agent already has muscle memory for the conventions those tools share. Match where you can — prefer the verb the neighboring CLIs use for "fetch one resource", the flag form everyone else uses for "skip confirmation", the well-known `--json` shape for structured output. Deviating costs every agent invocation a round of disambiguation. For a large CLI surface, mechanical enforcement (schema-driven generation, lint rules) outscales human review at keeping the vocabulary consistent across hundreds of subcommands.
+
 **Raw-payload pathway.** Every mutating command accepts `--json '{...}'`, `--params-file <path>`, or stdin (`-`) carrying the *full* upstream payload. Convenience flags are fine for humans, but they cannot be the contract for agents — agents generate JSON natively and cannot reliably translate flag soup into nested API objects.
 
 **Schema introspection at runtime.** Two complementary commands: `cli schema show <method>` returns the API request + response shape; `cli schema output <method>` returns the literal stdout envelope shape (no API call). Together they let the agent fetch exactly what it needs to produce *and* parse, instead of paying tokens to memorize them up front — and instead of staring at a docs site that's a version behind.
@@ -176,10 +178,15 @@ Push back if the user proposes any of these:
 - [references/retrofit_playbook.md](references/retrofit_playbook.md) — turning a human-first CLI into an agent-first one, in shippable diffs
 - [references/evaluation.md](references/evaluation.md) — agent-readiness rubric (11 weighted axes) + real-task eval methodology
 
-## Reference CLI worth studying
+## Reference CLIs worth studying
 
-The canonical open-source agent-first CLI to read end-to-end:
+A few open-source CLIs explicitly built (or being rebuilt) for agent consumption. None of these is "the canon" — read them as different points on the design space, then pick whichever patterns fit the CLI you're building.
 
-- **`gws` (Google Workspace CLI, [`googleworkspace/cli`](https://github.com/googleworkspace/cli))** — platform CLI with dynamic schema (built from the Discovery API), layered skills (shared / per-service / per-method / persona / recipe), raw-payload first, NDJSON pagination, structured dry-run, sanitization. Two-crate Rust workspace, ships 90+ skills. Best example for large, schema-driven services.
+| CLI | Domain shape | Patterns worth studying |
+|---|---|---|
+| **[`gws`](https://github.com/googleworkspace/cli)** (Google Workspace) | Platform CLI over a large multi-service API | Dynamic schema generated from the Discovery doc; layered skills (shared / per-service / per-method / persona / recipe); raw-payload-first input; NDJSON pagination; structured dry-run; response sanitization. Two-crate Rust workspace, 90+ skills shipped. |
+| **[`heygen-cli`](https://github.com/heygen-com/heygen-cli)** (HeyGen video generation) | Single-product CLI, mostly write/long-running jobs | `--request-schema` / `--response-schema` returning JSON Schema offline (no auth, no API call); even binary `download` emits JSON `{path, size_bytes}` on stdout for chaining; `--wait` blocks with exponential backoff and 429/5xx auto-retry; `echo "$KEY" | heygen auth login` pipe-to-auth pattern; stable application error codes (`not_found`, `auth_expired`) distinct from exit codes. |
+| **[`cf`](https://blog.cloudflare.com/cf-cli-local-explorer/) (Cloudflare's Wrangler rebuild)** | Platform CLI over ~3,000 API operations | TypeScript-schema-as-source-of-truth: same schema generates the CLI, the SDKs, the Terraform provider, and the MCP server. Cross-CLI vocabulary enforced mechanically at the schema layer (not in code review). `/cdn-cgi/explorer/api` mirrors local-resource state under the same OpenAPI shape as remote, so `--local` commands work against an agent-pointable address. |
+| **[`openai`](https://github.com/openai/openai-cli)** (OpenAI API) | Single-product CLI, mostly read/synchronous | Clean Go single-static-binary distribution (`brew install openai/tools/openai`), minimal but conformant agent-friendly defaults. Worth a read for the binary-distribution mechanics if you're going Rust/Go. |
 
-Read its `SKILL.md`(s) for the agent-side contract and its formatter / error handler / async modules for the implementation patterns. Referenced extensively across [references/](references/).
+Each one solves a different shape of problem. The docs reader, query-shaped, hybrid-ticket case studies in [references/think_like_an_agent.md](references/think_like_an_agent.md) map roughly onto these — the right reference for your CLI is the one whose domain shape resembles yours, not whichever happens to be the largest or most marketed.

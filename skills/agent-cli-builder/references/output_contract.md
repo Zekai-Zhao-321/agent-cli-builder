@@ -142,6 +142,38 @@ Required keys: `ok: false`, `error.code` (stable string), `error.exit_code` (int
 
 In practice the first suggestion is the most likely fix; agents will try them in order and stop on success.
 
+### Enumerate the valid set when rejecting an enum
+
+When the rejection cause is "you passed an invalid value for an enum / schema-bounded field", the error message names the valid set inline. Agents recover in one retry instead of re-reading `--help` and guessing.
+
+Bad — agent has to read `--help`, parse, guess, retry:
+
+```
+error: invalid visibility
+```
+
+Better — the enumeration is right there:
+
+```json
+{"ok": false, "error": {
+  "code": "VALIDATION_ERROR",
+  "exit_code": 2,
+  "message": "--visibility must be one of: public, private, unlisted (got: \"secret\")",
+  "suggestions": ["Pass --visibility=public, --visibility=private, or --visibility=unlisted."]
+}}
+```
+
+The pattern generalizes: any time you reject input against an enum, an enum-shaped resource list (e.g. "no such region: …"), or a schema, name the valid set in the message itself. Errors fire exactly when the agent doesn't know what to do next — that's the highest-signal place to load the answer.
+
+### Stable application error codes (in addition to exit codes)
+
+Exit codes are broad classes of failure (auth, validation, network). The `error.code` string in the envelope is a *finer-grained* application-level handle the agent can branch on without parsing `error.message`. Two recovery posts that share `exit_code = 2` (validation) might want different fixes:
+
+- `error.code = "NOT_FOUND"` → user-error, agent shouldn't retry, surface to user
+- `error.code = "INVALID_ENUM"` → re-construct the call with a value from the enumerated set
+
+Pick a small set (~10–20) of stable application codes and document them. Don't expand them per-error-message — they're the agent's branching surface, not free-form text.
+
 ## Exit-code taxonomy
 
 Use this taxonomy. Do not invent a new one — agents (and humans) have learned these conventions.
@@ -180,6 +212,19 @@ For CLIs that wrap a REST API, map HTTP status to the exit-code taxonomy at the 
 | 5xx | 6 | NETWORK |
 
 Forward `error.message` and `error.suggestions[]` from the upstream JSON response when present — most decent APIs return both. Keep the upstream signal; don't replace it with a generic "Something went wrong".
+
+### Binary outputs still emit JSON on stdout
+
+Commands that produce binary artifacts (downloaded files, generated images, video files) shouldn't break the JSON-on-stdout contract just because the artifact itself isn't JSON. The pattern: write the binary to disk and emit a one-line JSON envelope to stdout describing where it landed.
+
+```bash
+$ mycli video download vid_123 --to ./out.mp4
+{"ok": true, "data": {"path": "./out.mp4", "size_bytes": 4823091, "mime_type": "video/mp4"}, "metadata": {"source": "mycli v0.1.0"}}
+```
+
+The agent chains on `.data.path` exactly the same way it chains on `.data.id` from a non-binary command — the contract is uniform. If the user wanted the binary on stdout (`--to -` or equivalent), that's a deliberate opt-in; the default is "binary to disk, JSON to stdout."
+
+Forwarding raw binary to stdout by default breaks `cmd | jq`, breaks the agent's parser, and quietly forces every consumer to special-case "is this command the binary one?". Don't.
 
 ## Where do errors print?
 

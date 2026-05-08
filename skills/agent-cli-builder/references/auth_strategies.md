@@ -6,7 +6,7 @@ Auth has many legitimate flavors. Pick the one that fits where your CLI runs in 
 
 - **OS / SSO passthrough** — Kerberos SPNEGO (Windows AD, Linux kinit), AAD/Okta token cache, macOS Keychain. The CLI inherits the user's existing OS-level identity. No `<cli> auth login` needed. **Dominant in enterprise/corporate environments.**
 - **Cloud SDK chain** — `boto3.Session()`, `google.auth.default()`, `DefaultAzureCredential`. Walks env vars → instance metadata → CLI cache → … The right default for any CLI wrapping a cloud platform.
-- **Personal access tokens (PAT)** — user pastes once, CLI stores. Simple, agent-friendly, the dominant SaaS pattern. `gh auth login --with-token` is the canonical implementation.
+- **Personal access tokens (PAT)** — user pastes once, CLI stores. Simple, agent-friendly, the dominant SaaS pattern. `gh auth login --with-token` is the canonical implementation. Pair with **pipe-to-auth-login** (`echo "$KEY" | mycli auth login`) so an agent can install a token from an environment variable without it appearing in shell history or `ps`. Prefer this over `mycli auth login --token <KEY>` for the same reason.
 - **OAuth with device code** — `gh auth login` style. User completes a one-time device flow (browser on any machine they have); refresh tokens persist. The browser is human-only and one-time; once done, the agent doesn't see it.
 - **Service-account file / env var** — JSON file at `$MYCLI_CREDENTIALS_FILE`, or inline token in `$MYCLI_TOKEN`. CI workhorse. Pair with one of the above for non-CI use.
 - **Workload identity** — IAM role from instance metadata (EC2, ECS), K8s service-account token, AKS managed identity, GCE service account. The CLI gets auth for free when it runs inside a managed cloud workload.
