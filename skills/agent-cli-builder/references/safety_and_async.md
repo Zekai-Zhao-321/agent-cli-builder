@@ -132,14 +132,26 @@ Reasons:
 
 ## `--non-interactive`
 
-`--non-interactive` is the agent path. It should:
+**The primary mechanism is auto-detection.** When `stdout` is not a TTY (piped, redirected, captured by an agent harness), the CLI behaves non-interactively automatically. No flag needed for the common case. The major harnesses (codex, opencode, Claude Code, Cursor, Copilot CLI) all spawn the shell tool with plain pipes — `isatty()` returns false in the child — so auto-detection just works.
 
-- Disable any prompt for confirmation.
-- Disable any prompt for missing input — fail fast with `exit 2 / VALIDATION_ERROR` instead.
-- Disable any TUI redraws (use plain stderr lines).
-- Be the implicit default when stdout is non-TTY (`--non-interactive` and "stdout is non-TTY" are usually equivalent).
+Concretely, the auto-detected behavior is:
 
-Never silently default to "use the value from `~/.cache/last_used`" in non-interactive mode. Agents do not own the cache; surprising them with stored state is the opposite of reproducibility.
+- No prompts for confirmation.
+- No prompts for missing input — fail fast with `exit 2 / VALIDATION_ERROR` instead.
+- No TUI redraws (plain stderr lines only).
+- No fallback to "use the value from `~/.cache/last_used`". Agents do not own the cache; surprising them with stored state is the opposite of reproducibility.
+
+The `--non-interactive` flag exists for three narrow cases on top of that:
+
+1. **PTY-allocating harnesses.** Some agent runners (older Aider modes, replay/recording frameworks, anything that needs ANSI rendering) allocate a pseudo-TTY. The CLI sees `isatty() == true` and would try to prompt. `--non-interactive` overrides that.
+2. **CI runners with inconsistent TTY allocation.** Jenkins, certain GitHub Actions configs, `docker run -it` chains. Code that has to behave the same regardless passes `--non-interactive` defensively.
+3. **Documentation visibility.** Listing the flag in `--help` is a contract marker — it tells an agent-author skimming the help text that the CLI is agent-aware, without their having to test pipe-vs-TTY behavior to confirm.
+
+For 95 % of agent invocations the flag is redundant; auto-detection handles them. Ship the flag anyway — defensive cost is zero, the contract-marker value is real.
+
+`--interactive` (the inverse) forces interactive mode even when stdout is non-TTY. Less common; useful for testing prompt flows in scripted contexts.
+
+Never silently default to stored state in non-interactive mode — agents do not own the cache.
 
 ## `--yes`
 
@@ -188,6 +200,21 @@ gws gmail messages get --id m_123 --sanitize default
 ```
 
 Document which fields are sanitized — agents need to know which fields can be trusted.
+
+## Why async is non-optional under modern harnesses
+
+The async split below isn't a nice-to-have. It's a hard requirement once your CLI runs under any production agent harness.
+
+Concrete numbers from the two harnesses we've audited:
+
+- **OpenAI codex** — `DEFAULT_EXEC_COMMAND_TIMEOUT_MS = 10_000` (`codex-rs/core/src/exec.rs:49`). Anything taking longer than **10 seconds** is killed with `EXEC_TIMEOUT_EXIT_CODE = 124`. The agent doesn't choose this — the harness does, and it kills regardless of your CLI's own `--timeout`.
+- **Opencode** — `DEFAULT_TIMEOUT = 2 * 60 * 1000` (`packages/opencode/src/tool/shell.ts:32`). 2 minutes; more generous, but still finite. After that: SIGTERM → 200 ms → SIGKILL on the process group.
+
+Both harnesses also cap output bytes the agent can see (codex 1 MiB, opencode 50 KiB). A long-running command that prints incremental progress and gets killed mid-stream gives the agent a useless transcript with no recovery handle.
+
+**Implication: anything > 5 s must support `--async`** so the call returns a task id immediately, the harness kill is just "stop polling", and the agent's next turn picks up via `<cli> task get <id>`. Even if the underlying API is synchronous, the CLI can fake async by spawning a polling helper and persisting state to `~/.cache/<cli>/tasks/` (see "If the underlying API only does sync" below).
+
+> **Rule of thumb:** if your command can ever take longer than the codex 10 s default, ship the async split. If it can take longer than the opencode 2 min default, *insist* on the async split — there's no other path that works under both.
 
 ## Async tasks
 

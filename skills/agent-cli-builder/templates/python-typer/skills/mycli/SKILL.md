@@ -38,12 +38,18 @@ For mutating operations always pass `--dry-run` first, parse `data.dry_run == tr
 
 ## Authentication
 
-Order of precedence:
-1. `--token TOKEN` flag (rare; secrets in flags appear in `ps`).
-2. `MYCLI_TOKEN` env var.
-3. `~/.config/mycli/credentials.json`.
+The CLI reads credentials from `~/.config/mycli/credentials.json`, written by `mycli auth login`.
 
-If none is set, commands exit `3` (AUTH) and `error.suggestions[]` lists the recovery. **Never run `mycli auth login` from an agent context** — it opens a browser and hangs.
+**For agents:** **never run `mycli auth login`.** It opens a browser. If you see `error.code == "AUTH_ERROR"`, surface `error.suggestions[0]` to the user (typically: "ask the user to run `mycli auth login`") and stop. Do not retry, do not try `export MYCLI_TOKEN=…` — env exports do not persist across tool calls and codex strips `*TOKEN*` env vars by default.
+
+**For humans:** run `mycli auth login` once per machine. The CLI handles refresh transparently after that.
+
+**For CI:** set `MYCLI_TOKEN=…` in the runner's secret store. The CLI uses the env var when the credentials file is absent. The `--token` flag exists as an emergency override but exposes the secret in `ps` output — prefer the env var.
+
+Fallback chain in priority order:
+1. `--token TOKEN`            (highest; emergency override)
+2. `MYCLI_TOKEN` env          (CI / power users)
+3. `~/.config/mycli/credentials.json`  (canonical; written by `mycli auth login`)
 
 ## Output contract
 
@@ -110,3 +116,12 @@ mycli schema output <method>  # literal stdout envelope shape
 ```
 
 Schema commands are the source of truth for the contract; this file is the manual.
+
+## Harness notes
+
+Behavior depends on which agent harness invokes the CLI. Two known caveats:
+
+- **Codex (`codex-rs`)** clears the spawned child's environment and lets only a `Core` set through (`HOME, LOGNAME, PATH, SHELL, USER, USERNAME, TMPDIR, TEMP, TMP`). It also strips any var matching `*KEY*`, `*SECRET*`, `*TOKEN*`. So `MYCLI_TOKEN` set in the user's shell will NOT reach the CLI under default codex config. Use the credentials file (above) — `HOME` is in the inherit set, so it just works. To use env vars, the user must add to `~/.codex/config.toml`: `[shell_environment_policy]\ninclude_only = ["MYCLI_*"]`. Codex's default per-call timeout is **10 seconds**; commands taking longer than that will be killed with exit 124. Use `--async` for any operation that might exceed that window.
+- **Opencode** runs commands through `bash -l -c` with `.bashrc` sourced, so user-level shell exports survive (`MYCLI_TOKEN` set in `.bashrc` reaches the CLI). Default per-call timeout is **2 minutes**. The agent-visible output is capped at **50 KiB / 2000 lines**; longer responses get spilled to a file under the truncation cache and the agent sees only a preview plus the full path.
+
+Both harnesses spawn the CLI with plain pipes (no PTY), so `isatty()` returns false and the CLI's auto-detected `--non-interactive` behavior is correct out of the box.

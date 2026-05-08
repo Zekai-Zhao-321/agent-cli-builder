@@ -115,7 +115,7 @@ OPT_VERBOSE = typer.Option(False, "--verbose", help="Print debug detail to stder
 OPT_NI = typer.Option(
     None,
     "--non-interactive/--interactive",
-    help="Never prompt; fail fast on missing input. Defaults to true when stdout is non-TTY.",
+    help="Auto-detected from TTY: non-interactive when stdout is piped (most agents), interactive in a TTY. Pass explicitly to override (e.g. for harnesses that allocate a PTY).",
 )
 OPT_DRY = typer.Option(False, "--dry-run", help="Validate without performing.")
 OPT_YES = typer.Option(False, "--yes", "-y", help="Assume yes to confirmations.")

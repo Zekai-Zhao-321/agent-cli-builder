@@ -49,7 +49,7 @@ Memorize these. They are the non-negotiables that show up in every credible sour
    Together they let the agent fetch the exact shapes it must produce *and* parse — instead of paying tokens to memorize them up front.
 8. **Context-window discipline.** Pagination (NDJSON for streamability), field masks (`--fields`), concise vs detailed response toggles, truncation with hints. Default to small.
 9. **Input hardening.** Reject `?`, `#`, `%`, control chars, path traversals, double-encoded strings. Sandbox output paths to CWD. Build like the agent is *adversarial* — not malicious, just confidently wrong.
-10. **Safety rails.** `--dry-run` for every write. `--non-interactive` is first-class, not a fallback. Sanitize untrusted text the agent may read (email bodies, ticket descriptions) before it returns to context.
+10. **Safety rails.** `--dry-run` for every write. **Auto-detect TTY** for the prompt-vs-no-prompt switch — non-TTY means non-interactive, no flag required. The `--non-interactive` flag is an explicit override (for the rare harness that allocates a PTY) and a `--help` contract marker — not the primary mechanism. Sanitize untrusted text the agent may read (email bodies, ticket descriptions) before it returns to context.
 11. **Async tasks split.** Anything > 5s gets `--async` returning a task id, plus `cli task get <id>` and `cli download <id>`. Never block an agent loop you don't have to.
 12. **Ship a SKILL.md alongside the binary.** Lists preferred flags, names 2–3 recipe workflows, calls out the gotchas. The CLI is the contract; the skill is the manual.
 

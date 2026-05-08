@@ -80,6 +80,80 @@ Long responses cost tokens. When you must truncate, **embed a self-describing fi
 
 The agent reads `data._truncated.hint` and can recover without retrying blindly. Pick a default character cap (50K chars / ~12K tokens is reasonable for Claude-class models) and apply it uniformly.
 
+### When in-memory truncation isn't enough: spill to disk
+
+For commands that *might* return huge responses (full document fetches, audit-log dumps, raw API replies), in-memory truncation drops the data the agent might actually want. Opencode's bash tool ships a stronger pattern: **write the full output to a file and return only a preview plus the path** (`packages/opencode/src/tool/truncate.ts:36-39`).
+
+```json
+{
+  "ok": true,
+  "data": {
+    "preview": "first 2000 lines / 50 KiB of the response...",
+    "_truncated": {
+      "original_bytes": 4_127_891,
+      "shown_bytes": 51_200,
+      "full_path": "/home/alice/.cache/mycli/truncated/2026-05-08T03-04-22Z.json",
+      "hint": "Full output saved to disk. Read it with `cat <full_path>` or `jq < <full_path>` if you need fields beyond the preview."
+    }
+  },
+  "metadata": {"source": "mycli v0.1.0"}
+}
+```
+
+The agent gets enough to decide whether the full payload is worth reading, plus an explicit path it can `cat` from a follow-up tool call. The full data is preserved on disk; nothing is silently dropped.
+
+Recipe in code (Python; the Rust equivalent uses `tempfile::NamedTempFile`):
+
+```python
+import json
+import os
+from pathlib import Path
+from datetime import datetime, timezone
+
+def spill_to_disk(data: object, *, max_bytes: int = 50 * 1024) -> dict:
+    """Write `data` to disk; return a preview envelope.
+
+    Use this for the rare command where the response is so large that
+    even the in-memory truncation loses information the agent may want.
+    """
+    serialized = json.dumps(data, default=str)
+    if len(serialized) <= max_bytes:
+        return data  # type: ignore[return-value]
+
+    cache_dir = Path(os.environ.get("MYCLI_HOME") or Path.home() / ".cache" / "mycli")
+    spill_dir = cache_dir / "truncated"
+    spill_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    spill_path = spill_dir / f"{stamp}.json"
+    spill_path.write_text(serialized)
+    spill_path.chmod(0o600)
+
+    preview = serialized[:max_bytes]
+    return {
+        "preview": preview,
+        "_truncated": {
+            "original_bytes": len(serialized),
+            "shown_bytes": len(preview),
+            "full_path": str(spill_path),
+            "hint": (
+                f"Full output saved to disk. Read it with "
+                f"`cat {spill_path}` or `jq < {spill_path}` if you need "
+                f"fields beyond the preview."
+            ),
+        },
+    }
+```
+
+Two operational details to ship alongside:
+
+- **TTL cleanup.** Spilled files accumulate. Opencode runs a 7-day retention sweep (`tool/truncate.ts:23`); a similar cron-style cleanup on first run of each day is enough.
+- **Path sandboxing.** The spill directory must be under the user's `$HOME` (or `MYCLI_HOME`) — never `/tmp` (other users can read; on some systems it's tmpfs and gets wiped). Mode `0600`.
+
+Use this pattern selectively. The default `maybe_truncate()` in the Python template (in-memory, list-aware) is right for most commands. Reserve `spill_to_disk()` for commands you *know* can return >>1 MiB and where the full output has standalone value to the agent.
+
+In particular, **the size cap is harness-dependent**: codex retains 1 MiB of output, opencode caps the agent-visible portion at 50 KiB / 2000 lines (`packages/opencode/src/tool/truncate.ts:15-16`). Designing for the **opencode 50 KiB ceiling** as your safe default makes your CLI portable; agents that run under codex will still see the full data because both agree the disk path is canonical.
+
 ## Error envelope
 
 ```json
