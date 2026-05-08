@@ -439,7 +439,7 @@ def cmd_hello(
 # `TaskStore` is a Protocol; the template doesn't ship a concrete
 # implementation because real backends differ (file, SQLite, HTTP service).
 # Replace `_make_store()` with your real backend. The `cancel`, `list`, and
-# `download` patterns live in references/template_recipes.md in the parent skill.
+# `download` patterns live in templates/RECIPES.md in the parent agent-cli-builder skill.
 
 
 def _make_store() -> TaskStore:
@@ -457,7 +457,7 @@ class _UnconfiguredStore:
             exit_code=ExitCode.GENERAL,
             message="no TaskStore configured; wire one in cli.py::_make_store()",
             suggestions=[
-                "See references/template_recipes.md for a file-backed example.",
+                "See templates/RECIPES.md in the parent agent-cli-builder skill for a file-backed example.",
                 "Or replace _UnconfiguredStore with your service-backed implementation.",
             ],
         )

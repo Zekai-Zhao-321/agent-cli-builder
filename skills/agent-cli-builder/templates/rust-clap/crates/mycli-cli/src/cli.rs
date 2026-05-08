@@ -102,7 +102,7 @@ pub enum Commands {
 
     /// Async task introspection — `get` and `wait`. Add `cancel`, `list`,
     /// and `download` when your backend supports them; see
-    /// `references/template_recipes.md` in the parent skill.
+    /// `templates/RECIPES.md` in the parent agent-cli-builder skill.
     Task {
         #[command(subcommand)]
         sub: TaskSub,

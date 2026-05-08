@@ -6,13 +6,15 @@ Usage:
 What it does:
 1. Copies the chosen template into `--target`.
 2. Renames `mycli` → `<name>` everywhere (filesystem and file content).
-3. Updates pyproject.toml so the entry-point matches the new name.
-4. Updates the shipped SKILL.md so its frontmatter and recipes reference the
-   new CLI name.
+3. Updates pyproject.toml / Cargo.toml so the entry-point matches the new name.
 
-The output is a fully working CLI you can `pip install -e .` and start using
-immediately. From there, follow the cold-start checklist in the parent
-`agent-cli-builder` SKILL.md.
+The output is a fully working CLI you can `pip install -e .` (or
+`cargo install --path crates/<name>-cli --locked`) and start using
+immediately. The output also contains an empty `skills/<name>/` directory
+ready for a SKILL.md you author yourself — no starter ships; follow
+`references/shipping_skills.md` in the parent skill to write one. From
+there, work through `references/build_path.md` for the cold-start
+checklist.
 """
 from __future__ import annotations
 
@@ -153,12 +155,14 @@ Next steps:
   {name} hello world --output json
   {name} schema hello
 
-Then follow the agent-cli-builder cold-start checklist:
+Then follow the agent-cli-builder cold-start checklist (references/build_path.md):
   - Replace the demo `hello` command in src/{name}/cli.py with your own.
   - Add a SCHEMAS entry per command so `{name} schema <method>` returns a real schema.
   - If your CLI wraps a REST API, use HttpClient from src/{name}/http.py - it maps
     HTTP status codes to the right exit codes automatically.
-  - Fill in the recipes in skills/{name}/SKILL.md with your real workflows.
+  - Author your shipped skills/{name}/SKILL.md by following the meta-skill's
+    references/shipping_skills.md (no starter ships; the meta-skill walks you
+    through frontmatter, body structure, recipes, and the drift tests).
   - Score against the agent-readiness rubric (references/evaluation.md) before
     declaring shippable; aim for "Agent-ready" (>=65%) at minimum.
 """
@@ -179,7 +183,7 @@ Or run uninstalled from the workspace:
 
   cargo run -p {name}-cli -- hello world --output json
 
-Then follow the agent-cli-builder cold-start checklist:
+Then follow the agent-cli-builder cold-start checklist (references/build_path.md):
   - Replace the demo `hello` command in crates/{name}-cli/src/commands/hello.rs.
   - Add request/response types to crates/{name}-core/src/schemas.rs and
     register them in registered_methods() so `{name} schema show <method>`
@@ -187,7 +191,9 @@ Then follow the agent-cli-builder cold-start checklist:
   - If your CLI wraps a REST API, use HttpClient from crates/{name}-core/src/http.rs.
     It uses rustls-tls-native-roots, so corporate-proxy CA chains in the system
     trust store work without OpenSSL setup.
-  - Fill in the recipes in skills/{name}/SKILL.md with your real workflows.
+  - Author your shipped skills/{name}/SKILL.md by following the meta-skill's
+    references/shipping_skills.md (no starter ships; the meta-skill walks you
+    through frontmatter, body structure, recipes, and the drift tests).
   - Score against the agent-readiness rubric (references/evaluation.md) before
     declaring shippable; aim for "Agent-ready" (>=65%) at minimum.
 """

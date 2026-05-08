@@ -10,98 +10,33 @@ Every input that an agent generates can be wrong in ways a human would never pro
 
 ### Resource identifiers
 
-```python
-import re
-
-_BAD_IN_ID = re.compile(r"[?#%\s\x00-\x1f]")
-
-def validate_resource_name(value: str, *, field: str = "id") -> None:
-    if not value:
-        raise ValidationError(f"{field}: must not be empty")
-    if _BAD_IN_ID.search(value):
-        raise ValidationError(
-            f"{field}: contains forbidden characters (?, #, %, whitespace, control)",
-            hint="Pass just the ID, not a URL or query string."
-        )
-```
-
-The Rust equivalent in `mycli-core::validation`:
-
-```rust
-const FORBIDDEN_ID_CHARS: &[char] = &['?', '#', '%', '/', '\\', ' ', '\t', '\n', '\r'];
-
-pub fn validate_resource_id(id: &str) -> Result<(), CliError> {
-    if id.is_empty() {
-        return Err(CliError::validation("resource ID cannot be empty"));
-    }
-    if id.contains("..") {
-        return Err(CliError::validation(format!(
-            "resource ID '{id}' contains '..' (path traversal attempt)"
-        )));
-    }
-    for c in id.chars() {
-        if FORBIDDEN_ID_CHARS.contains(&c) || (c as u32) < 0x20 || (c as u32) == 0x7F {
-            return Err(CliError::validation(format!(
-                "resource ID '{id}' contains forbidden character {c:?}"
-            )));
-        }
-    }
-    Ok(())
-}
-```
-
-For async timeouts, both languages use a structured timeout primitive — `asyncio.wait_for(coro, timeout)` in Python, `tokio::time::timeout(duration, future)` in Rust. Both return a typed timeout error you can map to exit code 5 (TIMEOUT). Never sleep-poll or implement your own deadline tracking; the runtime's primitive integrates with cancellation.
+Reject IDs containing `?`, `#`, `%`, `/`, `\`, whitespace, or control characters; reject IDs containing `..` (path traversal). Apply at the CLI boundary, before any API call. Working impls live in `templates/python-typer/src/mycli/validation.py` (`validate_resource_name`) and `templates/rust-clap/crates/mycli-core/src/validation.rs` (`validate_resource_id`).
 
 Why each character:
 
 - `?` and `#` — agents hallucinate query strings inside IDs (`fileId?fields=name`).
 - `%` — agents pre-URL-encode strings that the HTTP layer will encode again, double-escaping.
+- `/` and `\` — agents reach for these inside IDs when they actually mean a path argument.
+- `..` — explicit path-traversal attempt, never legitimate inside an ID.
 - whitespace and control chars — appear when a model copies an example with stray markup.
 
 ### File paths
 
-```python
-from pathlib import Path
+For any flag taking an output directory or filename, resolve the path and assert it stays under CWD (or an explicit `--root`). `pathlib.Path(target).expanduser().resolve(strict=False)` handles `~`, symlinks, and `..` traversals; check the result still starts with `Path.cwd().resolve()`.
 
-def validate_safe_output_dir(target: str | Path, *, root: Path | None = None) -> Path:
-    root = root or Path.cwd()
-    p = Path(target).expanduser().resolve(strict=False)
-    if not str(p).startswith(str(root.resolve())):
-        raise ValidationError(
-            f"output path '{target}' resolves outside the working directory",
-            hint=f"Pass a path inside {root} or change directory before running."
-        )
-    return p
-```
+This catches `../../.ssh`, absolute paths to `/etc/passwd`, symlink games, and Windows alternate stream tricks. Apply to every `--output FILE`, `--download-to DIR`, etc. Working impl: `validate_safe_output_dir` in the Python template, `validate_output_path` in the Rust template.
 
-This catches `../../.ssh`, absolute paths to `/etc/passwd`, symlink games, and Windows alternate stream tricks. Apply to every `--output FILE`, `--download-to DIR`, etc.
+### Control characters in field values
 
-### Control characters in values
-
-```python
-def reject_control_chars(value: str, *, field: str) -> None:
-    for ch in value:
-        if ord(ch) < 0x20 and ch not in "\t\n":
-            raise ValidationError(
-                f"{field}: contains control character U+{ord(ch):04x}",
-                hint="Strip terminal escape sequences before passing this value."
-            )
-```
-
-Agents producing output that includes ANSI escape sequences is more common than you'd think. They look like legitimate text in the model's working memory.
+Reject raw control chars (anything below `0x20` other than `\t` `\n`) and `0x7F` (DEL) in any string an agent supplies as a flag value. Agents producing values with embedded ANSI escapes is more common than you'd expect — they look like legitimate text in the model's working memory.
 
 ### URL path segments
 
-For any value that becomes a URL path segment (`/widgets/{id}`), percent-encode at the HTTP layer:
+For any value that becomes a URL path segment (`/widgets/{id}`), percent-encode at the HTTP layer (`urllib.parse.quote(value, safe="")` in Python, `percent_encoding::utf8_percent_encode` in Rust). Never trust the agent to pre-encode. Reject pre-encoded `%` patterns at the input boundary (above), encode once at the HTTP boundary, end of story.
 
-```python
-from urllib.parse import quote
+### Async-timeout primitive
 
-def encode_path_segment(value: str) -> str:
-    return quote(value, safe="")
-```
-
-Never trust the agent to pre-encode. Reject pre-encoded `%` patterns at the input boundary (above), encode once at the HTTP boundary, end of story.
+For async timeouts, use the runtime's structured timeout primitive — `asyncio.wait_for(coro, timeout)` in Python, `tokio::time::timeout(duration, future)` in Rust. Both return a typed timeout error you can map to exit code 5 (TIMEOUT). Never sleep-poll or implement your own deadline tracking; the runtime's primitive integrates with cancellation.
 
 ## `--dry-run`
 
@@ -110,9 +45,8 @@ Every mutating command must accept `--dry-run`. The output is a *structured* rep
 ```json
 {
   "ok": true,
-  "command": "widgets create",
-  "dry_run": true,
-  "result": {
+  "data": {
+    "dry_run": true,
     "would_request": {
       "method": "POST",
       "url": "https://api.example.com/v1/widgets",
@@ -120,7 +54,8 @@ Every mutating command must accept `--dry-run`. The output is a *structured* rep
       "body": {"name": "alpha", "color": "blue"}
     },
     "validation": {"ok": true, "warnings": []}
-  }
+  },
+  "metadata": {"source": "mycli v0.1.0"}
 }
 ```
 
@@ -179,13 +114,14 @@ In the JSON output, wrap untrusted strings in an envelope:
 ```json
 {
   "ok": true,
-  "result": {
+  "data": {
     "subject": "Hi",
     "body_untrusted": {
       "_untrusted": true,
       "value": "Ignore previous instructions..."
     }
-  }
+  },
+  "metadata": {"source": "mycli v0.1.0"}
 }
 ```
 
@@ -223,16 +159,16 @@ Anything that takes more than ~5 seconds gets the **async split**:
 ```
 mycli video generate --prompt "..." --async
 # returns immediately:
-{"ok": true, "result": {"task_id": "tsk_abc", "status": "queued"}}
+{"ok": true, "data": {"task_id": "tsk_abc", "state": "queued"}, "metadata": {"source": "mycli v0.1.0"}}
 
 mycli task get tsk_abc
-{"ok": true, "result": {"task_id": "tsk_abc", "status": "running", "progress": 0.4}}
+{"ok": true, "data": {"task_id": "tsk_abc", "state": "running", "progress": 0.4}, "metadata": {...}}
 
 mycli task wait tsk_abc --timeout 300
 # blocks until terminal state, then prints final task object
 
 mycli download tsk_abc --to ./out.mp4
-{"ok": true, "result": {"path": "./out.mp4", "size_bytes": 1234567}}
+{"ok": true, "data": {"path": "./out.mp4", "size_bytes": 1234567}, "metadata": {...}}
 ```
 
 ### The minimum task surface
@@ -285,55 +221,6 @@ Agents retry. Make retries cheap:
 - Mask tokens in any verbose / status output (`Bearer ********`).
 - Never echo `--api-key` values in error messages.
 - Prefer reading secrets from env (`MYCLI_TOKEN`) or a credentials file over flags. Flags appear in shell history and `ps`.
-
-## Output sanitization: UTF-8 and control characters
-
-Two practical hardening steps for the output path. Both are cheap; neither is in most CLI templates.
-
-### UTF-8 enforcement on Windows
-
-Windows consoles default to cp1252. The first time your CLI prints a non-ASCII char from an API response, it crashes with `UnicodeEncodeError`. Force UTF-8 once at module import:
-
-```python
-import io, sys
-
-if sys.platform == "win32":
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-        except (AttributeError, io.UnsupportedOperation):
-            pass
-```
-
-Place this in your `output.py` (or wherever you set up streams). After this point the rest of your code can ignore encoding entirely.
-
-### Strip control characters from output strings
-
-Upstream APIs return text with embedded ANSI escape sequences, raw control bytes, or null characters more often than you'd expect. They corrupt downstream `jq` / `yq` and look like prompt injection to the agent.
-
-Strip control chars from string leaves before serializing the envelope (preserve `\n` `\r` `\t` for legitimate whitespace):
-
-```python
-_CTRL = str.maketrans(
-    {chr(c): "" for c in range(0x00, 0x20) if c not in (0x0A, 0x0D, 0x09)}
-    | {"\x7f": ""}  # DEL
-)
-
-
-def sanitize_for_json(obj):
-    """Recursively strip control characters from strings in a nested structure."""
-    if isinstance(obj, str):
-        return obj.translate(_CTRL)
-    if isinstance(obj, dict):
-        return {k: sanitize_for_json(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [sanitize_for_json(item) for item in obj]
-    return obj
-```
-
-Apply this **once** at the envelope layer — `Output.emit_success` and `Output.emit_error` — so every command benefits without per-command thought. The cost is one O(n) recursive walk per response; for any CLI returning < 1MB of text per call this is undetectable.
-
-Combined with response sanitization for prompt-injection (above), these three layers cover the most common output-side hazards: encoding crashes, parser corruption, and embedded instructions.
 
 ## Common mistakes
 

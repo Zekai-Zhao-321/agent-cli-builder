@@ -65,13 +65,13 @@ metadata:
 ---
 ```
 
-Description rules — these are the same rules as for any skill, with two specific add-ons for skills that live next to other skills:
+Description rules — the same rules as for any skill, plus two add-ons for skills that live next to other skills:
 
 - Third person, present tense.
 - Includes WHAT (drive `mycli`) and WHEN (trigger phrases).
 - Names the command verbatim. Agents trigger on exact tokens; "the Acme tool" is weaker than `mycli`.
 - Lists the **resource nouns** the user will say ("widgets", "jobs", "tasks"). Skill triggering is dominated by lexical overlap.
-- Tendency in 2026 models is **under-triggering**, so make the description slightly *pushy* — e.g. "Use whenever the user mentions widgets…", not just "Useful for widget management."
+- Tendency in 2026 models is **under-triggering**, so the description is slightly *pushy* — e.g. "Use whenever the user mentions widgets…", not just "Useful for widget management."
 
 ### Cross-skill negative triggers
 
@@ -108,13 +108,7 @@ When the skill body has a "Want to... | Use..." table, add a third column with t
 | Toggle a flag for one env | `mycli flags toggle <key> --env prod --dry-run` then re-run | ~120 |
 ```
 
-Agents reason about cost vs. value when given explicit token estimates. The numbers don't have to be precise — order-of-magnitude is plenty (50, 500, 5K, 50K). Update them when you see actual eval token counts diverging significantly.
-
-Three sources for the estimates:
-
-- **Run the command and count** with `tiktoken` or your tokenizer of choice on the JSON output.
-- **Mental model**: a typical concise summary is ~50 tokens; a full record with description and comments is ~500–1500; a paginated list is "per item × N + envelope overhead".
-- **Eval transcripts**: when running the skill's eval suite, log per-tool-call token counts. Take medians.
+Agents reason about cost vs. value when given explicit token estimates. The numbers don't have to be precise — order-of-magnitude is plenty (50, 500, 5K, 50K). Update them when actual eval token counts diverge significantly.
 
 ## Body structure
 
@@ -191,7 +185,58 @@ API documentation goes stale the moment the API version increments. The shipped 
 
 When the model maintains the skill itself (a common pattern), it has incentive to inline an API description. Push back. The CLI's `schema` command is the source of truth; everything else drifts.
 
-Even when the skill *does* show command examples (recipes, decision tables), those examples drift from the CLI when the CLI is renamed or refactored. Cover this with the **skill-references-real-commands** drift test from [command_registry.md](command_registry.md):
+## Drift between surfaces
+
+The single highest-volume bug in mature agent CLIs is **drift between surfaces**: the CLI claims one thing, the shipped skill claims another, the schema endpoint claims a third, the MCP tool name claims a fourth. Agents trust whichever surface they read first, then fail when it disagrees with the truth on disk.
+
+Every command typically appears on ~10 surfaces (help, schema show/output, MCP tool name, shipped SKILL.md, references, README, CHANGELOG, MCP docstring, docs site, internal wiki). With 50 commands × 10 surfaces, every refactor risks 500 drift points. The probability that a hand-maintained surface is correct after a year approaches zero.
+
+The fix is mechanical: one source of truth, derive everything else from it. When derivation isn't feasible, write drift tests that fail loudly in CI.
+
+### One registry, many surfaces
+
+Define command metadata in **one** module:
+
+```python
+# core/commands.py — the source of truth
+COMMANDS = {
+    "widgets.create": {
+        "summary": "Create a widget.",
+        "request": {"type": "object", "required": ["name"], ...},
+        "response": {"$ref": "#/$defs/Widget"},
+        "examples": [{"input": {"name": "alpha"}, "output": {...}}],
+        "mutating": True,
+        "mcp_tool_name": "widgets_create",
+    },
+    ...
+}
+```
+
+Then derive every surface:
+
+| Surface | How it's derived |
+|---|---|
+| `cli --help` examples | iterate `COMMANDS`, pull `examples[0]["input"]` |
+| `cli schema show <cmd>` | dump `request` + `response` |
+| `cli schema output <cmd>` | wrap `response` in the `{ok, data, metadata}` envelope |
+| `@mcp.tool()` registration | iterate `COMMANDS`, register one per entry, use `mcp_tool_name` |
+| MCP tool docstrings | concatenate `summary` + `examples` |
+| Shipped `SKILL.md` recipes | tests assert every command name is in `COMMANDS` |
+| `--dry-run` plan | use `mutating` and `request` to build the plan |
+
+Either generate the CLI command tree from the registry, or hand-code commands but enforce **registry coverage** with a test (every `@app.command()` has a `COMMANDS` entry; every `COMMANDS` entry has a `@app.command()`).
+
+### Five drift tests when a full registry isn't feasible
+
+For CLIs that aren't generated, add CI tests. Each runs in <1s; together they catch the highest-volume class of agent-CLI bug. Implementations are mechanical (each is ~10-20 lines) and an LLM can write them from the description alone.
+
+1. **Help-references-real-commands.** Every command name in any `--help` text or example actually resolves under the live command tree. Catches: rename without updating help.
+2. **Skill-references-real-commands.** Every command line in shipped `SKILL.md` and its `references/` resolves. Catches: rename without updating shipped skill — **the most common drift source**.
+3. **MCP-CLI alignment.** Every MCP tool maps to a CLI command (and vice versa) under a consistent rule (e.g. dots ↔ underscores), with an explicit excluded set for human-only commands like `auth login`. Catches: MCP and CLI evolving independently.
+4. **Schema coverage.** Every CLI command has a `SCHEMAS` entry (or is in an explicit excluded set). Without this, `cli schema show <cmd>` returns "unknown method" for some commands and works for others — agents can't tell which. Catches: new command landed without `SCHEMAS` entry.
+5. **Output-shape consistency.** `cli schema output <cmd>` matches the actual stdout from `cli <cmd> --dry-run --output json`. Catches: schema endpoint and formatter going out of sync.
+
+The skill-references test is the single highest-leverage one — once you have it, the **suggesting group** (`Did you mean: mycli widgets new`) stops silently masking drift. Without it, an agent fuzzy-matching from a stale skill recipe to a renamed command "succeeds", and the broken recipe ships indefinitely.
 
 ```python
 def test_shipped_skill_examples_reference_real_commands():
@@ -200,7 +245,13 @@ def test_shipped_skill_examples_reference_real_commands():
             assert cmd_resolves(cmd), f"{path} references missing command: {cmd}"
 ```
 
-Without this test, every command rename eventually breaks a recipe and nobody notices until an agent fails in production.
+### Drift anti-patterns
+
+- **Hand-maintained help text divorced from the command tree.** If `--help` is hand-edited Markdown that mentions commands, but the command tree is registered elsewhere, drift is waiting to happen. Generate help from the registry, or add the help-references test.
+- **Hand-maintained MCP tool list.** `@mcp.tool()` decorators hand-written separately from `@app.command()` decorators **will** diverge the moment one CLI command is renamed. Generate MCP from the same source the CLI uses.
+- **Skill examples in prose.** If your shipped `SKILL.md` says `mycli widgets get <id>` in a code block but a paragraph nearby says "Use `widget get` (singular)", they drift independently. Use one canonical command line per recipe; no prose paraphrases.
+- **Per-version examples without `cli-min-version` enforcement.** `SKILL.md` declares `cli-min-version: 1.2.0` but a recipe uses a flag added in 1.5.0. Users on 1.2.0 hit "no such option" errors that don't match the skill's claims. Either pin `cli-min-version` forward or test that example flags exist in the declared minimum version.
+- **Independent docs sites.** Hand-maintained docs sites drift faster than anything else. Generate from the registry, or accept the docs site is humans-only — the **shipped SKILL.md is the agent contract**.
 
 ## Layered skills (when the CLI is large)
 
@@ -238,7 +289,6 @@ Track trigger-rate, success-rate, and tool-call count. Iterate the description f
 Two paths:
 
 1. **Inside the CLI repo.** Bundle the skill in the binary's package; `pip install mycli` puts a `SKILL.md` in `site-packages/mycli/skills/mycli/SKILL.md`. Document the path in your README so users (or `npx skills install`) can find it.
-
 2. **A separate skills repo** (e.g. `org/skills`). Use this when you want to release skill updates faster than CLI versions, or when the CLI is closed-source but the skills can be open.
 
 Either is fine; both are better than no shipped skill.

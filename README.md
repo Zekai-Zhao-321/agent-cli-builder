@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skills standard](https://img.shields.io/badge/Agent%20Skills-compliant-blue.svg)](https://agentskills.io)
-[![Status: v0.2.1](https://img.shields.io/badge/status-v0.2.1-brightgreen.svg)](CHANGELOG.md)
+[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-brightgreen.svg)](CHANGELOG.md)
 
 Most CLIs are built for humans, then "made compatible" with agents by tacking on `--json`. This skill flips the order: the CLI is designed for agents from the first command, and humans get a clean text mode for free. The skill is constructive *and* evaluative — it gives an agent a 12-step build path **and** an 11-axis weighted rubric (the **agent-readiness score**) to grade any CLI it encounters.
 
@@ -21,9 +21,9 @@ Everything below lives under one `SKILL.md` namespace at `skills/agent-cli-build
 
 | Inside the skill | What it gives you |
 |---|---|
-| [`SKILL.md`](skills/agent-cli-builder/SKILL.md) | The entry point: 12 invariants, the 12-step cold-start workflow, the retrofit playbook, the decision points an agent must walk a user through, and the anti-patterns it must refuse. |
-| [`references/`](skills/agent-cli-builder/references/) (9 docs) | Deep-dive guides loaded on demand: output contract, input & payloads, safety & async, auth, MCP layer, command registry & drift tests, shipping skills, retrofit playbook, cold-start research, the evaluation rubric. |
-| [`templates/python-typer/`](skills/agent-cli-builder/templates/python-typer/) and [`templates/rust-clap/`](skills/agent-cli-builder/templates/rust-clap/) | Two lean CLI scaffolds (single-package Python+Typer; two-crate Rust+clap workspace). Ship the **contract**: output formatter, error envelope, exit-code taxonomy, input hardening, HTTP client (status → exit-code mapping), `TaskStore` trait/Protocol + `wait_for_terminal` helper, typo router, and a starter shipped `SKILL.md`. They deliberately do NOT ship concrete `TaskStore` backends, `cancel`/`list`/`download` flows, or domain-specific command groupings — those live as worked examples in [`references/template_recipes.md`](skills/agent-cli-builder/references/template_recipes.md), not in your scaffold. |
+| [`SKILL.md`](skills/agent-cli-builder/SKILL.md) | The entry point: thesis on what changes when an agent is the user, the patterns of an agent-native CLI, decision points an agent must walk a user through, and the anti-patterns it must refuse. Routes to the right reference for build / retrofit / score. |
+| [`references/`](skills/agent-cli-builder/references/) (10 docs) | Deep-dive guides loaded on demand: output contract, input & payloads, safety & async, auth, MCP layer, shipping skills (with drift tests), retrofit playbook, cold-start research, build path checklist, the evaluation rubric. |
+| [`templates/python-typer/`](skills/agent-cli-builder/templates/python-typer/) and [`templates/rust-clap/`](skills/agent-cli-builder/templates/rust-clap/) | Two lean CLI scaffolds (single-package Python+Typer; two-crate Rust+clap workspace). Ship the **contract**: output formatter, error envelope, exit-code taxonomy, input hardening, HTTP client (status → exit-code mapping), `TaskStore` trait/Protocol + `wait_for_terminal` helper, typo router. They deliberately do NOT ship a starter `SKILL.md` (write yours from `references/shipping_skills.md`) or concrete `TaskStore` backends / `cancel` / `list` / `download` flows — those live as worked examples in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md), not in your scaffold. |
 | [`scripts/scaffold.py`](skills/agent-cli-builder/scripts/scaffold.py) | One-command generator: pick `--language python-typer` or `--language rust-clap`, renames `mycli` → `<name>` (case-insensitive, substring-aware so `mycli-core` becomes `<name>-core`). |
 | [`evals/`](skills/agent-cli-builder/evals/) | A 12-check mechanical verifier (`verify_scaffold.py`) plus five end-to-end agent eval prompts covering cold-start, retrofit, architecture, the score-without-evidence guardrail, and the audit-first pattern. |
 
@@ -182,24 +182,25 @@ agent-cli-builder/
 │       └── manual.md                ← universal install guide
 └── skills/
     └── agent-cli-builder/           ← the skill (this is what gets installed)
-        ├── SKILL.md                 ← entry point: 12 invariants + 12-step workflow
+        ├── SKILL.md                 ← entry point: thesis + patterns + router
         ├── references/              ← deep-dive docs, loaded on demand
+        │   ├── build_path.md        ← cold-start checklist, intake interview
         │   ├── output_contract.md
         │   ├── input_and_payloads.md
         │   ├── safety_and_async.md
         │   ├── auth_strategies.md
         │   ├── mcp_layer.md
-        │   ├── command_registry.md
-        │   ├── shipping_skills.md
+        │   ├── shipping_skills.md   ← (incl. drift between surfaces, 5 drift tests)
         │   ├── retrofit_playbook.md
         │   ├── cold_start_research.md
         │   └── evaluation.md
         ├── templates/
+        │   ├── RECIPES.md           ← worked impls for what's deliberately not in templates
         │   ├── python-typer/        ← Python+Typer CLI scaffold (single package)
         │   │   ├── pyproject.toml
         │   │   ├── README.md
         │   │   ├── src/mycli/{cli,output,errors,validation,async_tasks,http}.py
-        │   │   └── skills/mycli/SKILL.md
+        │   │   └── skills/mycli/    ← empty; author your SKILL.md from shipping_skills.md
         │   └── rust-clap/           ← Rust+clap CLI scaffold (two-crate workspace)
         │       ├── Cargo.toml       ←   workspace root + [workspace.dependencies]
         │       ├── README.md
@@ -210,7 +211,7 @@ agent-cli-builder/
         │       │   │   └── src/{lib,output,errors,validation,http,async_tasks,schemas}.rs
         │       │   └── mycli-cli/   ←   the binary (thin clap adapter)
         │       │       └── src/{main,cli}.rs + commands/{hello,schema,task}.rs
-        │       └── skills/mycli/SKILL.md
+        │       └── skills/mycli/    ← empty; author your SKILL.md from shipping_skills.md
         ├── scripts/
         │   └── scaffold.py          ← project generator
         └── evals/
@@ -222,7 +223,7 @@ agent-cli-builder/
 
 ## Status & roadmap
 
-Current version: **v0.2.1** — both scaffolds (Python+Typer and Rust+clap) are production-ready and intentionally lean. Contract code stays in the templates; concrete backends and domain-specific patterns moved to [`references/template_recipes.md`](skills/agent-cli-builder/references/template_recipes.md). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract.
+Current version: **v0.3.0** — heavy refactor. `SKILL.md` reframed from numbered "twelve invariants" to thesis-driven patterns + a router (build / retrofit / score). References consolidated 11 → 10 with no topic bleed. Description tightened ~1,100 → 310 chars. Scaffolds no longer ship a starter `SKILL.md` (a stale starter is worse than none — author yours from `references/shipping_skills.md`). Contract code stays in the templates; domain-specific patterns live in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract.
 
 Near-term ideas, not yet committed:
 

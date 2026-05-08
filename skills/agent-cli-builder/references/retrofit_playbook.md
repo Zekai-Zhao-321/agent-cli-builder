@@ -26,7 +26,7 @@ Once outputs are captured, look at the source for:
 - **Where output is formatted.** One shared formatter, or per-command `print()` calls? The latter means JSON support has to be added per-command, which is much more work.
 - **Where errors are formatted.** Same question. If errors are formatted by Click/Typer's default usage-error path, machine mode of error responses doesn't exist yet.
 - **Auth resolution.** Is there one place that resolves credentials, or does each command resolve its own? One place is required; multiple places means precedence drifts.
-- **Drift surface.** Does help text reference command names directly, or pull from a registry? Does the shipped `SKILL.md` (if any) reference real commands? Does the MCP server (if any) register tools from a shared source? See [command_registry.md](command_registry.md).
+- **Drift surface.** Does help text reference command names directly, or pull from a registry? Does the shipped `SKILL.md` (if any) reference real commands? Does the MCP server (if any) register tools from a shared source? See [shipping_skills.md](shipping_skills.md) ("Drift between surfaces") for the registry pattern and the five drift tests.
 
 ### Audit output: a one-page diagnosis
 
@@ -286,7 +286,7 @@ Cover at minimum:
 - Gotchas
 - Pointer to `cli schema`
 
-Use the starter at `templates/python-typer/skills/mycli/SKILL.md`.
+No starter ships in the templates — author from scratch following [shipping_skills.md](shipping_skills.md), which walks frontmatter, body structure, recipes, and the drift tests.
 
 ## Step 12 — Score and iterate
 

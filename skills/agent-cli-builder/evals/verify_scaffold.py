@@ -10,12 +10,18 @@ future template that puts a binary on PATH and obeys the envelope contract.
 For the Python+Typer template:
     cd <scaffolded-dir>
     pip install -e .
-    python evals/verify_scaffold.py <name> --skill-path skills/<name>/SKILL.md
+    python evals/verify_scaffold.py <name>
 
 For the Rust+clap template:
     cd <scaffolded-dir>
     cargo install --path crates/<name>-cli --locked
-    python evals/verify_scaffold.py <name> --skill-path skills/<name>/SKILL.md
+    python evals/verify_scaffold.py <name>
+
+Once you've authored your shipped skill (following the parent
+agent-cli-builder skill's references/shipping_skills.md), pass
+`--skill-path skills/<name>/SKILL.md` to additionally verify its
+frontmatter. Fresh scaffolds have an empty `skills/<name>/` directory —
+no starter ships, so the SKILL.md check is opt-in.
 
 This script runs the scaffolded CLI and asserts:
 - `cli --output json hello world` returns a parseable JSON success envelope
@@ -30,7 +36,8 @@ This script runs the scaffolded CLI and asserts:
   `error.suggestions: list[str]`.
 - A path traversal in a resource ID is rejected with exit code 2.
 - A typo'd command (`cli helo`) is suggested back as `hello` (suggesting group).
-- The shipped SKILL.md exists and has the required frontmatter fields.
+- (Opt-in via --skill-path) The shipped SKILL.md exists and has the required
+  frontmatter fields.
 
 Returns a JSON report on stdout describing which checks passed / failed
 and an exit code (0 = all pass, 1 = at least one failure).

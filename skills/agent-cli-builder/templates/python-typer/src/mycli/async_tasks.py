@@ -10,8 +10,8 @@ What's NOT in this template by default:
 * task creation flows
 
 Those are domain-specific and easy to write once you know the contract.
-See `references/template_recipes.md` in the parent skill for worked
-examples (file-backed store with cancel + list, download).
+See `templates/RECIPES.md` in the parent agent-cli-builder skill for
+worked examples (file-backed store with cancel + list, download).
 """
 from __future__ import annotations
 

@@ -12,6 +12,39 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
+## [0.3.0] — 2026-05-08
+
+Heavy refactor: drop the prescriptive "twelve invariants" framing for thesis-driven patterns; turn `SKILL.md` into a router; consolidate references; stop shipping starter `SKILL.md`s inside the scaffold templates.
+
+### Changed
+
+- **`SKILL.md` rewritten (240 → 138 lines).** The numbered "twelve invariants" frame is gone; replaced with a *What changes when an agent is the user* thesis followed by named patterns with one-line whys (stream-by-purpose, auto-JSON in non-TTY, structured envelopes, semantic exit codes, predictable grammar, raw-payload pathway, schema introspection, context-window discipline, input hardening, safety rails, async-tasks split, ship a SKILL.md). The body is now a router into the right reference for build / retrofit / score / MCP / ship-skill — the build process moved to its own reference for progressive disclosure.
+- **YAML `description` tightened (~1,100 → 310 chars).** Same trigger surface, ~25 % the chars, explicit negative triggers ("Do NOT use for general CLI style or one-off shell scripts"), names the harnesses verbatim (Claude Code, Cursor, codex, opencode). The previous ~1,100-char description over-shot the Anthropic average (~290) by 4×; it had accumulated through `0.1.0 → 0.2.1` by addition.
+- **Topic deduplication.** HTTP-status → exit-code mapping table moved fully to `references/output_contract.md`; `references/auth_strategies.md` now points at it. UTF-8 enforcement and control-character sanitization unified under `references/output_contract.md`'s "Output hardening" section; `references/safety_and_async.md` keeps only mutation-path / prompt-injection sanitization.
+- **LLM-reproducible code cuts (~19 % across references).** `output_contract.md`'s `spill_to_disk` Python function (~40 lines) replaced with a 5-line shape description plus the three non-obvious operational facts an LLM doesn't infer (TTL cleanup, `0o600` mode, `$HOME` not `/tmp`). `input_and_payloads.md`'s full `_SuggestingGroup` `TyperGroup` subclass replaced with the pattern description plus a pointer at the working impl in the template. `safety_and_async.md`'s validator functions reduced to skeletons + pointers at `templates/<lang>/src/.../validation.{py,rs}`. The cuts target snippets the agent can reconstruct from a one-line description; no patterns or non-obvious gotchas were lost.
+- **`scripts/scaffold.py`** — `_next_steps_*` updated to direct the user at `references/shipping_skills.md` for authoring the shipped skill. Module docstring updated to reflect the empty `skills/<name>/` directory.
+- **`templates/python-typer/README.md`** and **`templates/rust-clap/README.md`** — replaced "fill in the recipes in `skills/mycli/SKILL.md`" with "author from scratch following `references/shipping_skills.md` — no starter SKILL.md ships, because a stale starter is worse than none". Cross-link to the relocated recipes file (`templates/RECIPES.md`) updated.
+- **`evals/verify_scaffold.py`** — the SKILL.md frontmatter check is now opt-in via `--skill-path`; fresh scaffolds have an empty `skills/<name>/` slot.
+- **`README.md`** — top-level skill description and project-tree updated to reflect the new reference layout (10 references, with `build_path.md` added and `command_registry.md` / `template_recipes.md` removed) and the dropped template `SKILL.md`s.
+
+### Added
+
+- **[`references/build_path.md`](skills/agent-cli-builder/references/build_path.md)** (new, ~150 lines) — owns the 12-step cold-start checklist, intake interview, language/framework picker, and the steps 6–9 reference mapping that previously lived in the meta-skill body. Routed-to from `SKILL.md`, not always-loaded.
+- **[`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md)** — worked filler-implementation patterns (file-backed `LocalTaskStore` with `cancel` + `list`, `download` with sandboxed paths, adding methods to the schema registry). Relocated from `references/template_recipes.md` because they're template-internal worked examples, not top-level skill patterns.
+- **`references/shipping_skills.md` "Drift between surfaces"** section — absorbed `command_registry.md` (registry-as-source-of-truth pattern + 5 drift tests). The 5 tests are described as 4-line "what each asserts + why" instead of full Python bodies, so the file gains the content without ballooning past ~300 lines.
+
+### Removed
+
+- **`references/command_registry.md`** — merged into `references/shipping_skills.md` as "Drift between surfaces". Both were about authoring discipline; keeping them split caused content adjacency without obvious routing.
+- **`references/template_recipes.md`** — relocated to `templates/RECIPES.md`. It was filler-implementation patterns, not a top-level skill reference; living next to the templates is clearer.
+- **`templates/python-typer/skills/mycli/SKILL.md`** and **`templates/rust-clap/skills/mycli/SKILL.md`** — both deleted, replaced with `.gitkeep` so the `skills/<name>/` slot still exists in scaffold output. The shipped starter's body was largely a worked example of `references/shipping_skills.md`; a starter that drifts from the patterns is worse than no starter at all. Scaffold output now points users at the canonical authoring guide.
+
+### Why
+
+The skill accumulated by addition through `0.1.0 → 0.2.1`: every patch added invariants, checklists, decision tables. The result was a skill that *prescribed* where it should have *taught*. Anthropic's own [`skill-creator`](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md) says "soften MUSTs, explain why, prefer general guidance over hyper-narrow examples"; we leaned the other way. The numbers told the story: SKILL.md description ~1,100 chars vs. Anthropic average ~290; eleven references with confirmed topic overlap; two shipped starter `SKILL.md`s that mostly re-rendered `references/shipping_skills.md`. v0.3.0 reframes from numbered MUSTs to named patterns; pushes the build/retrofit/score processes into routed references; and drops shipped artifacts that duplicate authoring guidance.
+
+The patterns and code paths are unchanged — agents writing CLIs from this skill produce the same envelope, the same exit codes, the same async split, the same input hardening. The framing now matches the audience: agents that know how to code.
+
 ## [0.2.1] — 2026-05-07
 
 Slim both scaffolds — ship the contract code, stop baby-stepping the agent on patterns it can write itself.
@@ -95,7 +128,8 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/releases/tag/v0.1.0

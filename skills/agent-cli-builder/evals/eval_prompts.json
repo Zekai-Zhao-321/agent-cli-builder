@@ -110,7 +110,7 @@
         "checks": [
           "transcript names 'audit' or 'Step 0' or 'measure before changing' before applying retrofit changes",
           "transcript asks for at least 3 of: --help output, success JSON, error sample, large-result, source code locations",
-          "transcript references retrofit_playbook.md and command_registry.md (or names drift testing)"
+          "transcript references retrofit_playbook.md and shipping_skills.md (or names drift testing)"
         ]
       }
     },

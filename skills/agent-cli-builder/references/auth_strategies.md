@@ -78,20 +78,9 @@ Ship `<cli> auth status` returning `{principal, expires_at, scopes, source}`. Th
 
 ## HTTP status → exit code
 
-For REST-backed CLIs, map HTTP status to the exit-code taxonomy at the HTTP-client boundary. The bundled clients (`http.py` / `http.rs`) do this for you:
+For REST-backed CLIs, map HTTP status to the exit-code taxonomy at the HTTP-client boundary. The canonical mapping table lives in [output_contract.md](output_contract.md) ("HTTP status → exit code") — copy it from there, do not re-derive. The bundled clients (`http.py` / `http.rs`) implement it.
 
-| HTTP | Exit | Class |
-|---|---|---|
-| 200/201/204 | 0 | OK |
-| 400, 422 | 2 | VALIDATION |
-| 401, 403 | 3 | AUTH |
-| 404 | 2 | VALIDATION |
-| 408 | 5 | TIMEOUT |
-| 429 | 4 | QUOTA |
-| 451 | 10 | POLICY |
-| 5xx | 6 | NETWORK |
-
-Forward `error.message` and `error.suggestions[]` from the upstream JSON when present — most decent APIs return both. Keep the upstream signal; don't replace it with a generic "Something went wrong".
+The relevant detail for *auth specifically*: `401` and `403` both map to exit code 3 (`AUTH`). Forward the upstream `error.message` and `error.suggestions[]` from the response body when present — most decent APIs return both, and "expired Kerberos ticket — run kinit" is dramatically better recovery context than "401 Unauthorized".
 
 ## Secret masking
 

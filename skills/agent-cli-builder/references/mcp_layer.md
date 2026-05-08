@@ -262,9 +262,10 @@ side grows commands the other doesn't have, debugging falls apart and
 agents that learn one cannot help users on the other.
 
 This is the most acute case of **surface drift** — see
-[command_registry.md](command_registry.md) for the broader pattern (help,
-shipped SKILL.md, schema, MCP tool names all from one registry or
-covered by drift tests). At minimum, ship the MCP-CLI alignment test:
+[shipping_skills.md](shipping_skills.md) ("Drift between surfaces")
+for the broader pattern: help, shipped SKILL.md, schema, MCP tool names
+all from one registry or covered by drift tests. At minimum, ship the
+MCP-CLI alignment test:
 
 ```python
 def test_mcp_tools_align_with_cli():

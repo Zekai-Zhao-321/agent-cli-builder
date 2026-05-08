@@ -4,6 +4,8 @@ The Python+Typer and Rust+clap templates ship the **contract** — output envelo
 
 This file is the catalog of those "how would I implement this" worked examples. Read the recipe matching your situation and adapt; do not copy verbatim.
 
+For pattern-level guidance (why these aren't in the template, why dry-run defaults differ between CLI and MCP, etc.), see `../references/`.
+
 ---
 
 ## Recipe 1 — File-backed `TaskStore` with cancel + list
@@ -269,7 +271,7 @@ SCHEMAS["widgets.create"] = {
 }
 ```
 
-Python doesn't get auto-derivation; you write the schema by hand. **The discipline that prevents drift is a paired test**: take a fixture request, validate it against `SCHEMAS["widgets.create"]["request"]` with `jsonschema`, and call the actual command function — the function should accept the input without raising. Any time the schema or the function changes, the test catches the drift. See `references/command_registry.md` for the full pattern.
+Python doesn't get auto-derivation; you write the schema by hand. **The discipline that prevents drift is a paired test**: take a fixture request, validate it against `SCHEMAS["widgets.create"]["request"]` with `jsonschema`, and call the actual command function — the function should accept the input without raising. Any time the schema or the function changes, the test catches the drift. See `../references/shipping_skills.md` ("Drift between surfaces") for the full pattern and the five drift tests every mature CLI should ship.
 
 ---
 

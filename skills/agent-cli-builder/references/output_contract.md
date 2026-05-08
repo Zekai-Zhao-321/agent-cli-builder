@@ -102,53 +102,13 @@ For commands that *might* return huge responses (full document fetches, audit-lo
 
 The agent gets enough to decide whether the full payload is worth reading, plus an explicit path it can `cat` from a follow-up tool call. The full data is preserved on disk; nothing is silently dropped.
 
-Recipe in code (Python; the Rust equivalent uses `tempfile::NamedTempFile`):
+The shape an LLM can reproduce: serialize the payload, if it exceeds `max_bytes` write it to a timestamped file under `$MYCLI_HOME/truncated/` (or `~/.cache/mycli/truncated/`) and return the `{preview, _truncated: {full_path, original_bytes, shown_bytes, hint}}` envelope; otherwise return the data untouched.
 
-```python
-import json
-import os
-from pathlib import Path
-from datetime import datetime, timezone
-
-def spill_to_disk(data: object, *, max_bytes: int = 50 * 1024) -> dict:
-    """Write `data` to disk; return a preview envelope.
-
-    Use this for the rare command where the response is so large that
-    even the in-memory truncation loses information the agent may want.
-    """
-    serialized = json.dumps(data, default=str)
-    if len(serialized) <= max_bytes:
-        return data  # type: ignore[return-value]
-
-    cache_dir = Path(os.environ.get("MYCLI_HOME") or Path.home() / ".cache" / "mycli")
-    spill_dir = cache_dir / "truncated"
-    spill_dir.mkdir(parents=True, exist_ok=True)
-
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-    spill_path = spill_dir / f"{stamp}.json"
-    spill_path.write_text(serialized)
-    spill_path.chmod(0o600)
-
-    preview = serialized[:max_bytes]
-    return {
-        "preview": preview,
-        "_truncated": {
-            "original_bytes": len(serialized),
-            "shown_bytes": len(preview),
-            "full_path": str(spill_path),
-            "hint": (
-                f"Full output saved to disk. Read it with "
-                f"`cat {spill_path}` or `jq < {spill_path}` if you need "
-                f"fields beyond the preview."
-            ),
-        },
-    }
-```
-
-Two operational details to ship alongside:
+Three operational details that aren't obvious from "save the file":
 
 - **TTL cleanup.** Spilled files accumulate. Opencode runs a 7-day retention sweep (`tool/truncate.ts:23`); a similar cron-style cleanup on first run of each day is enough.
-- **Path sandboxing.** The spill directory must be under the user's `$HOME` (or `MYCLI_HOME`) — never `/tmp` (other users can read; on some systems it's tmpfs and gets wiped). Mode `0600`.
+- **Path sandboxing.** The spill directory must be under the user's `$HOME` (or `$MYCLI_HOME`) — never `/tmp` (other users can read; on some systems it's tmpfs and gets wiped between sessions).
+- **Mode `0600`.** Spilled files often contain API responses with secrets the masker missed. World-readable defaults are wrong even on a single-user machine.
 
 Use this pattern selectively. The default `maybe_truncate()` in the Python template (in-memory, list-aware) is right for most commands. Reserve `spill_to_disk()` for commands you *know* can return >>1 MiB and where the full output has standalone value to the agent.
 
@@ -204,6 +164,23 @@ The agent-relevant property is that *different recovery strategies have differen
 
 Document the taxonomy in an `ERRORS.md` next to your `README.md`. Agents — and humans bisecting a regression — will read it.
 
+### HTTP status → exit code (REST-backed CLIs)
+
+For CLIs that wrap a REST API, map HTTP status to the exit-code taxonomy at the HTTP-client boundary. The bundled clients (`http.py` / `http.rs`) do this for you:
+
+| HTTP | Exit | Class |
+|---|---|---|
+| 200/201/204 | 0 | OK |
+| 400, 422 | 2 | VALIDATION |
+| 401, 403 | 3 | AUTH |
+| 404 | 2 | VALIDATION |
+| 408 | 5 | TIMEOUT |
+| 429 | 4 | QUOTA |
+| 451 | 10 | POLICY |
+| 5xx | 6 | NETWORK |
+
+Forward `error.message` and `error.suggestions[]` from the upstream JSON response when present — most decent APIs return both. Keep the upstream signal; don't replace it with a generic "Something went wrong".
+
 ## Where do errors print?
 
 Pick one and never mix.
@@ -228,13 +205,37 @@ The `gws` CLI uses Option A; many other production CLIs use Option B. Both are b
 - `--verbose` adds detail to **stderr** only. It must never change stdout content.
 - Progress bars and spinners always go to stderr, never stdout. If stdout is non-TTY, suppress progress entirely (no point and it just costs CPU).
 
-## Sanitize control characters in JSON output
+## Output hardening
 
-Upstream APIs return text with embedded ANSI escape sequences, raw control bytes, or null characters more often than you'd expect. Strip control chars (preserving `\n` `\t` `\r`) before serializing — otherwise downstream `jq` and similar parsers choke.
+Two cheap defenses for the output path. Both belong at the envelope layer (once, in `emit_success` / `emit_error`) so every command benefits without per-command thought.
+
+### UTF-8 enforcement on Windows
+
+Windows consoles default to cp1252. The first time your CLI prints a non-ASCII char from an API response under that default, it crashes with `UnicodeEncodeError`. Force UTF-8 once at module import for both `stdout` and `stderr`:
+
+```python
+import io, sys
+
+if sys.platform == "win32":
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        except (AttributeError, io.UnsupportedOperation):
+            pass
+```
+
+Place in your `output.py` (or wherever streams are set up). After this point the rest of the code can ignore encoding.
+
+### Sanitize control characters in output strings
+
+Upstream APIs return text with embedded ANSI escape sequences, raw control bytes, or null characters more often than you'd expect. Strip C0 control chars (preserve `\n` `\r` `\t` for legitimate whitespace) and `0x7F` (DEL) before serializing — otherwise downstream `jq` / `yq` choke and the agent sees corrupted output.
+
+The pattern is a recursive walk over the JSON tree, replacing strings with their `translate`-stripped form. Python skeleton:
 
 ```python
 _CTRL = str.maketrans(
     {chr(c): "" for c in range(0x00, 0x20) if c not in (0x0A, 0x0D, 0x09)}
+    | {"\x7f": ""}
 )
 
 def sanitize_for_json(obj):
@@ -247,35 +248,9 @@ def sanitize_for_json(obj):
     return obj
 ```
 
-Apply this at the envelope level — once, in `output.emit_success` / `output.emit_error` — so every command benefits without per-command thought.
+Rust equivalent: iterate `serde_json::Value` recursively, and for `Value::String(s)` filter chars where `c as u32 < 0x20 && c not in ('\n','\r','\t')` or `c as u32 == 0x7F`. Apply at the same envelope layer in `mycli-core::output::emit_success` / `emit_error`.
 
-The same logic in Rust:
-
-```rust
-use serde_json::Value;
-
-pub fn sanitize(value: Value) -> Value {
-    match value {
-        Value::String(s) => Value::String(strip_control_chars(&s)),
-        Value::Array(arr) => Value::Array(arr.into_iter().map(sanitize).collect()),
-        Value::Object(map) => {
-            Value::Object(map.into_iter().map(|(k, v)| (k, sanitize(v))).collect())
-        }
-        other => other,
-    }
-}
-
-fn strip_control_chars(s: &str) -> String {
-    s.chars()
-        .filter(|&c| {
-            let cu = c as u32;
-            !(cu < 0x20 && c != '\n' && c != '\r' && c != '\t') && cu != 0x7F
-        })
-        .collect()
-}
-```
-
-The Rust template wires this into the `mycli-core::output::emit_success` and `emit_error` paths, so every command output is sanitized before serialization without per-command code.
+The cost is one O(n) walk per response; for any CLI returning < 1MB of text per call this is undetectable. Combined with the prompt-injection response-sanitization layer (see [safety_and_async.md](safety_and_async.md), "Response sanitization"), these cover the most common output-side hazards: encoding crashes, parser corruption, and embedded instructions.
 
 ## Non-TTY checklist
 
@@ -287,59 +262,9 @@ Run through these for every command that prints output:
 - [ ] `cmd --quiet` is silent on stderr but unchanged on stdout.
 - [ ] Exit code reflects the operation result, not the formatting mode.
 
-## Implementation skeleton (Python)
+## Working implementations
 
-The full module pair lives in `templates/python-typer/src/mycli/output.py` and `errors.py`. The shapes look like:
-
-```python
-# output.py — minimal
-import json, sys, time
-from dataclasses import dataclass
-
-@dataclass
-class Output:
-    fmt: str  # "json", "text", ...
-
-    def emit_success(self, data, *, metadata=None, start_time=None):
-        meta = dict(metadata or {})
-        meta["source"] = f"mycli v{__version__}"
-        if start_time is not None:
-            meta["response_time_ms"] = round((time.time() - start_time) * 1000)
-        envelope = {"ok": True, "data": data, "metadata": meta}
-        if self.fmt == "json":
-            json.dump(sanitize_for_json(envelope), sys.stdout)
-            sys.stdout.write("\n")
-        else:
-            self._render_text(data)
-
-    def emit_error(self, exc):
-        envelope = {
-            "ok": False,
-            "error": {
-                "code": exc.code,
-                "exit_code": exc.exit_code,
-                "message": exc.message,
-                "suggestions": exc.suggestions or [],
-            },
-            "metadata": {"source": f"mycli v{__version__}"},
-        }
-        json.dump(sanitize_for_json(envelope), sys.stderr)
-        sys.stderr.write("\n")
-```
-
-```python
-# errors.py — exit codes
-class ExitCode:
-    OK = 0
-    GENERAL = 1
-    VALIDATION = 2
-    AUTH = 3
-    QUOTA = 4
-    TIMEOUT = 5
-    NETWORK = 6
-    POLICY = 10
-    INTERRUPTED = 130
-```
+The Python+Typer template ships a tested implementation in `templates/python-typer/src/mycli/output.py` and `errors.py`. The Rust+clap template's lives in `templates/rust-clap/crates/mycli-core/src/output.rs` and `errors.rs`. Read those for the working code; the patterns above describe the *contract* the implementations must satisfy.
 
 ## Common mistakes
 

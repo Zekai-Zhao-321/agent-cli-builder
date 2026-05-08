@@ -41,8 +41,8 @@ echo '{"name":"alice","shout":true}' | mycli hello --params-file -
 1. **Write your first command** in `crates/mycli-cli/src/commands/<name>.rs` and wire it into `cli.rs::Commands` and `commands/mod.rs::dispatch`.
 2. **Add request/response types** to `crates/mycli-core/src/schemas.rs` and register them in `registered_methods()`. They derive `Serialize + Deserialize + JsonSchema` so `mycli schema show` picks them up automatically.
 3. **Wire HTTP** if your CLI calls a service: use `mycli_core::http::HttpClient`. HTTP status codes already map to the right exit codes (401/403→AUTH=3, 429→QUOTA=4, 5xx→NETWORK=6, etc.).
-4. **Wire your task store** if you have async work: implement `TaskStore` for your backend in `commands/task.rs::make_store()`. The trait is just `get`. See `references/template_recipes.md` in the parent skill for a worked file-backed example.
-5. **Fill in the recipes** in `skills/mycli/SKILL.md` with your real workflows.
+4. **Wire your task store** if you have async work: implement `TaskStore` for your backend in `commands/task.rs::make_store()`. The trait is just `get`. See [`../RECIPES.md`](../RECIPES.md) for a worked file-backed example.
+5. **Author `skills/mycli/SKILL.md`** from scratch following the parent skill's [`references/shipping_skills.md`](../../references/shipping_skills.md) — no starter SKILL.md ships with the template, because a stale starter is worse than none.
 6. **Score against the agent-readiness rubric** (see the parent skill's `references/evaluation.md`) before declaring shippable; aim for "Agent-ready" (≥ 65 %).
 
 ## Distribution

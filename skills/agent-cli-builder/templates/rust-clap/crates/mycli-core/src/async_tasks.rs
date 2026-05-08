@@ -11,8 +11,8 @@
 //! * task creation flows
 //!
 //! Those are domain-specific and easy to write once you know the trait.
-//! See `references/template_recipes.md` in the parent skill for worked
-//! examples (file-backed store, cancel + list, download).
+//! See `templates/RECIPES.md` in the parent agent-cli-builder skill for
+//! worked examples (file-backed store, cancel + list, download).
 
 use std::time::Duration;
 

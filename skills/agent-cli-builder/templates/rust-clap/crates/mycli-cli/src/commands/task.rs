@@ -3,8 +3,8 @@
 //! `mycli-core::async_tasks::TaskStore` is a trait; the template doesn't
 //! ship a concrete implementation because real backends differ
 //! (file, SQLite, HTTP service). Wire your store below in `make_store()`.
-//! `references/template_recipes.md` in the parent skill has a working
-//! file-backed example you can drop in.
+//! `templates/RECIPES.md` in the parent agent-cli-builder skill has a
+//! working file-backed example you can drop in.
 
 use std::time::Duration;
 
@@ -53,7 +53,7 @@ impl TaskStore for UnconfiguredStore {
             "no TaskStore configured; wire one in commands/task.rs::make_store()",
         )
         .with_suggestions([
-            "See references/template_recipes.md for a file-backed example.",
+            "See templates/RECIPES.md in the parent agent-cli-builder skill for a file-backed example.",
             "Or replace UnconfiguredStore with your service-backed implementation.",
         ]))
     }

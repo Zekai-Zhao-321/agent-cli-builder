@@ -144,55 +144,29 @@ Agents make two kinds of command mistakes that humans rarely make:
 1. **Typos** — `mycli helo` instead of `mycli hello`.
 2. **Conceptual mistakes** — `mycli search ...` when the right command is actually `mycli widgets list ...` (the agent reaches for a verb that doesn't exist because it sounds plausible).
 
-The cheapest fix is a **suggesting group** at the top level. When a command name doesn't resolve, fuzzy-match it against the known set and against a curated alias table:
+The cheapest fix is a **suggesting group** at the top level. When a command name doesn't resolve, the group's `resolve_command` (in Click/Typer this is the `TyperGroup` / `click.Group` subclass) does two checks in order:
+
+1. **Conceptual alias — exact match.** Look the unknown name up in a curated table (see below). If found, raise `UsageError` with the canonical command in the message: `Did you mean: mycli widgets list`.
+2. **Fuzzy match.** Fall back to `difflib.get_close_matches(cmd_name, list(self.list_commands(ctx)) + list(aliases.keys()), n=1, cutoff=0.6)` to catch typos like `helo` → `hello`.
+
+Both branches raise `click.UsageError`, which the top-level error handler maps to exit code 2 (`VALIDATION_ERROR`). The agent gets a structured error whose `message` literally contains the corrected command, recovers in one turn, and never hits the `--help` grep loop.
+
+The working class is in `templates/python-typer/src/mycli/cli.py` (search for `_SuggestingGroup`) — drop in a `cls=_SuggestingGroup` on your top-level `typer.Typer(...)` and you're done.
+
+The high-leverage piece is the **conceptual alias table** itself. Curate it from your eval transcripts:
 
 ```python
-import difflib
-import click
-import typer
-
 _CONCEPTUAL_ALIASES: dict[str, str] = {
     # Curated agent-mistake corrections. Add as you observe them.
     "search":   "widgets list",
     "create":   "widgets create",
     "history":  "widgets get --include history",
 }
-
-
-class _SuggestingGroup(typer.core.TyperGroup):
-    def resolve_command(self, ctx: click.Context, args: list[str]):
-        try:
-            return super().resolve_command(ctx, args)
-        except click.UsageError as exc:
-            if not args:
-                raise
-            cmd_name = args[0]
-            # 1. Conceptual alias — exact match wins
-            if cmd_name in _CONCEPTUAL_ALIASES:
-                raise click.UsageError(
-                    f"No such command '{cmd_name}'. "
-                    f"Did you mean: mycli {_CONCEPTUAL_ALIASES[cmd_name]}"
-                ) from exc
-            # 2. Difflib fuzzy match against valid commands and alias keys
-            valid = list(self.list_commands(ctx)) + list(_CONCEPTUAL_ALIASES.keys())
-            matches = difflib.get_close_matches(cmd_name, valid, n=1, cutoff=0.6)
-            if matches:
-                best = matches[0]
-                target = _CONCEPTUAL_ALIASES.get(best, best)
-                raise click.UsageError(
-                    f"No such command '{cmd_name}'. Did you mean: mycli {target}"
-                ) from exc
-            raise
-
-
-app = typer.Typer(..., cls=_SuggestingGroup)
 ```
 
-The agent gets back a structured validation error (`exit 2`) whose `message` reads `No such command 'helo'. Did you mean: mycli hello`. It can recover in one turn instead of repeatedly grepping `--help`.
+Every `Did you mean: …` that *didn't* fire on a fuzzy match (because the wrong command was lexically distant from the right one — `search` vs `widgets list`) is a candidate for the alias table. Each entry is a one-line table edit and saves multiple agent turns the next time an agent reaches for that alias.
 
-**Curating `_CONCEPTUAL_ALIASES` is the highest-leverage maintenance task on the suggesting group.** Each entry costs a one-line table edit and saves multiple agent turns every time an agent reaches for that alias. Watch your eval transcripts — every `Did you mean` fallback that *didn't* fire on a fuzzy match is a candidate for the alias table.
-
-For nested groups (e.g. unknown subcommands of `widgets`), apply the same pattern to the subgroup's `TyperGroup` subclass. We've seen this implemented with a factory: `_suggesting_subgroup(aliases)` returns a fresh class per parent group.
+For nested groups (e.g. unknown subcommands of `widgets`), apply the same pattern to the subgroup's `TyperGroup` subclass — a small factory `_suggesting_subgroup(aliases)` returning a fresh class per parent group keeps the per-group alias tables tidy.
 
 ## `--help` discipline
 
