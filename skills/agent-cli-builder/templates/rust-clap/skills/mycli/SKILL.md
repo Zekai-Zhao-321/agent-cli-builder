@@ -38,18 +38,13 @@ For mutating operations always pass `--dry-run` first, parse `data.dry_run == tr
 
 ## Authentication
 
-The CLI reads credentials from `~/.config/mycli/credentials.json`, written by `mycli auth login`.
+This template ships a credentials-file pattern (`mycli auth login` writes `~/.config/mycli/credentials.json`). Replace with whatever auth your real CLI uses — Kerberos / SSO passthrough, cloud SDK chain, PAT, OAuth + device code, etc. See [agent-cli-builder/references/auth_strategies.md] for the menu.
 
-**For agents:** **never run `mycli auth login`.** It opens a browser. If you see `error.code == "AUTH_ERROR"`, surface `error.suggestions[0]` to the user (typically: "ask the user to run `mycli auth login`") and stop. Do not retry, do not try `export MYCLI_TOKEN=…` — env exports do not persist across tool calls and codex strips `*TOKEN*` env vars by default.
+On `AUTH_ERROR` (exit 3), parse `error.suggestions[]` — each is a concrete shell command. Run shell-safe ones (`kinit`, `aws sso login --no-browser`, refreshing an env var); surface browser-required ones to the user.
 
-**For humans:** run `mycli auth login` once per machine. The CLI handles refresh transparently after that.
+State inspection (no API call): `mycli auth status` returns `{principal, expires_at, scopes, source}`.
 
-**For CI:** set `MYCLI_TOKEN=…` in the runner's secret store. The CLI uses the env var when the credentials file is absent. The `--token` flag exists as an emergency override but exposes the secret in `ps` output — prefer the env var.
-
-Fallback chain in priority order:
-1. `--token TOKEN`            (highest; emergency override)
-2. `MYCLI_TOKEN` env          (CI / power users)
-3. `~/.config/mycli/credentials.json`  (canonical; written by `mycli auth login`)
+Fallback chain in this template: `--token TOKEN` > `MYCLI_TOKEN` env > `~/.config/mycli/credentials.json`.
 
 ## Output contract
 
