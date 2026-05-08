@@ -18,6 +18,9 @@
 # to disk first and passed via `git commit -F`).
 .commitmsg
 
+# Web-fetch scratch HTML used during research subagent runs.
+_fetch*.html
+
 # --- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]

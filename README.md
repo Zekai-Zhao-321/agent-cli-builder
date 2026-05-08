@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skills standard](https://img.shields.io/badge/Agent%20Skills-compliant-blue.svg)](https://agentskills.io)
-[![Status: v0.3.1](https://img.shields.io/badge/status-v0.3.1-brightgreen.svg)](CHANGELOG.md)
+[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-brightgreen.svg)](CHANGELOG.md)
 
 Most CLIs are built for humans, then "made compatible" with agents by tacking on `--json`. This skill flips the order: the CLI is designed for agents from the first command, and humans get a clean text mode for free. The skill is constructive *and* evaluative — it gives an agent a 12-step build path **and** an 11-axis weighted rubric (the **agent-readiness score**) to grade any CLI it encounters.
 
@@ -171,7 +171,7 @@ The scaffolded CLI ships with the twelve patterns already in place: structured `
 
 ## What "agent-native" means here
 
-The twelve patterns of an agent-native CLI. The full skill explains the *why* and the failure mode behind each one — these are summary reminders, not rules to memorize.
+The twelve patterns of an agent-native CLI. The full skill explains the *why* and the failure mode behind each one — these are summary reminders, not rules to memorize. They divide cleanly into **always-applicable patterns** (1–12 below — they hold regardless of domain) and **domain-determined choices** that sit on top (granularity, helper-vs-raw, read-vs-write priority weighting). The framing for both comes from a single lens: see like an agent. The agent reading this skill is itself the kind of mind they're designing for, and *human friction is not agent friction* — wrapping SQL because typing it is awkward for humans is pure context-tax for an agent that knows SQL natively. See [`skills/agent-cli-builder/references/think_like_an_agent.md`](skills/agent-cli-builder/references/think_like_an_agent.md).
 
 | # | Pattern | One-line rule |
 |---|---|---|
@@ -227,8 +227,9 @@ agent-cli-builder/
 ├── CHANGELOG.md
 └── skills/
     └── agent-cli-builder/           ← the skill (this is what gets installed)
-        ├── SKILL.md                 ← entry point: thesis + patterns + router
+        ├── SKILL.md                 ← entry point: thesis + lens + patterns + router
         ├── references/              ← deep-dive docs, loaded on demand
+        │   ├── think_like_an_agent.md  ← THE LENS: agent cognitive profile, human-vs-agent friction, API-design analog, read/write split, granularity case studies, temporal frame
         │   ├── build_path.md        ← cold-start checklist, intake interview
         │   ├── output_contract.md
         │   ├── input_and_payloads.md
@@ -268,9 +269,9 @@ agent-cli-builder/
 
 ## Status & roadmap
 
-Current version: **v0.3.1** — README aligned with the v0.3.0 skill refactor: "twelve invariants" framing replaced with "twelve patterns" so the README and `SKILL.md` stop disagreeing; six per-platform install docs collapsed into a single Quick start section in this README with `<details>` blocks for the platform-specific quirks (Cursor's `@` syntax, Gemini's native installer, Codex's universal path, etc.). The `docs/install/` directory is gone. Same skill content as v0.3.0; just the docs around it.
+Current version: **v0.4.0** — adds the *lens*. The skill now teaches the perspective the patterns came from, not just the patterns. New top-level reference [`references/think_like_an_agent.md`](skills/agent-cli-builder/references/think_like_an_agent.md) covers the agent cognitive profile (context budget, recall degradation as context grows, training-data biases that come from human estimates and don't apply to the agent's actual capacity), the human-friction-vs-agent-friction decision rule (the same domain produces opposite design choices depending on which intelligence is the user — wrap SQL for humans, expose it raw for agents who know it), the API-design analog (REST/GraphQL/RPC/BFF), read-tool vs write-tool priorities, granularity case studies (docs reader / SQL CLI / hybrid ticket system), and the temporal evolution of best practices (function-calling era → MCP era → skills era → staged-discovery era — each prescription is bound to the loading model it assumed). SKILL.md gains a 5th fact in the thesis (*"you carry human-trained biases — consult your own experience"*), a new `## See like an agent` section with a friction-decision table and the four discovery models, and a structural split of the 12 patterns into **always-applicable** vs **domain-determined choices**. Templates and existing references are unchanged.
 
-v0.3.0 was the heavy skill refactor: `SKILL.md` reframed from numbered "twelve invariants" to thesis-driven patterns + a router (build / retrofit / score), references consolidated 11 → 10 with no topic bleed, description tightened ~1,100 → 310 chars, scaffolds no longer ship a starter `SKILL.md` (author yours from `references/shipping_skills.md`). Contract code stays in the templates; domain-specific patterns live in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract.
+v0.3.x was the heavy skill refactor (frame change from "twelve invariants" to patterns + router) and the docs consolidation (six per-platform install docs into one README section). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract. Contract code stays in the templates; domain-specific patterns live in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md).
 
 Near-term ideas, not yet committed:
 

@@ -53,8 +53,9 @@ With research findings as starting defaults — frame each question as a confirm
 5. **Long-running operations?** If yes, async splitting is mandatory at Step 9. (Often answered by 1a.)
 6. **Auth model?** Token / OAuth / SSO / cloud SDK chain / none. (Often answered by 1a.) Reuse OS-native flows where possible — see [auth_strategies.md](auth_strategies.md).
 7. **MCP alongside, or CLI-only?** See the "Do we also need an MCP server?" decision in the parent SKILL.md.
+8. **Read-mostly, write-heavy, or mixed?** Read-mostly CLIs win or lose on retrieval shape (progressive disclosure, field masks, NDJSON pagination — the agent has no eyes; mandate the layered API). Write-heavy CLIs win or lose on safety (`--dry-run`, idempotency, structured `error.suggestions[]` with concrete recovery commands). Mixed CLIs need both; weight depth by the actual mix. The answer affects Step 4 (grammar choice — narrow read tools vs query-shaped vs compound), Step 7 (which patterns are heaviest), and Step 10 (which sections of the shipped `SKILL.md` get more recipes). See [references/think_like_an_agent.md](think_like_an_agent.md) ("Human friction is not agent friction") for the decision rule.
 
-If the user says "I don't know", default to: Python + Typer, single product, both audiences, REST-backed, async split needed, OAuth client + token env var, CLI-only (add MCP only when a specific consumer requires it).
+If the user says "I don't know", default to: Python + Typer, single product, both audiences, REST-backed, async split needed, OAuth client + token env var, CLI-only (add MCP only when a specific consumer requires it), assume mixed read/write.
 
 ## Step 2 — Pick the language and framework
 

@@ -150,7 +150,7 @@ How small does the response stay by default?
 | 0 | Full responses returned. No pagination, no field selection. |
 | 1 | Pagination or field masks on some commands. |
 | 2 | Pagination (NDJSON for streamability), field masks (`--fields`), and `--include section1,section2` progressive parameters on read commands. |
-| 3 | Above PLUS self-describing `_truncated` field, default-small responses (smallest useful slice as the default), and token-cost estimates documented in the shipped SKILL.md decision tables. |
+| 3 | Above PLUS self-describing `_truncated` field, default-small responses (smallest useful slice as the default), and token-cost estimates documented in the shipped SKILL.md decision tables. For read-mostly CLIs, also requires a coarse-to-fine progressive-disclosure pipeline (e.g. `find` → `list_sections` → `get_section`) — not just truncation — so the agent pays per slice rather than per resource. See [think_like_an_agent.md](think_like_an_agent.md) for why this is read-tool-specific. |
 
 #### 8. Knowledge packaging (weight 2)
 

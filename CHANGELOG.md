@@ -12,6 +12,31 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
+## [0.4.0] — 2026-05-08
+
+Add the lens. The skill teaches CLI patterns; this version teaches the *perspective* the patterns came from. The agent reading this skill is itself the kind of mind they're designing for, and that fact — used directly — is the world's best ground truth on what an agent CLI needs.
+
+### Added
+
+- **NEW [`references/think_like_an_agent.md`](skills/agent-cli-builder/references/think_like_an_agent.md)**. Eight sections: (1) why this lens comes first, (2) the agent cognitive profile (context budget, recall degradation as context grows, training-data biases like *"a backend takes a week"* coming from human estimates that don't apply to your actual capacity), (3) human friction is not agent friction (worked case studies: a SQL-shaped CLI where wrapping each filter ships back human-friction the agent doesn't have, vs a docs reader where progressive disclosure is mandated precisely because the agent has no eyes), (4) your CLI surfaces are tool-design surfaces (mapping `--help` / exit codes / envelope / `--dry-run` to tool-design vocabulary), (5) tool design is API design (REST / GraphQL / RPC / BFF analog), (6) read tools vs write tools (different priorities derived from the cognitive profile), (7) granularity (3 case studies: docs reader / query-shaped CLI / hybrid ticket system), (8) the temporal frame (function-calling era → MCP era → skills era → staged-discovery era — each prescription is bound to the loading model it assumed), plus a closing 6-question checklist the agent-as-designer asks themselves before adding any tool.
+- **`SKILL.md`** new section `## See like an agent` between the thesis and the patterns. Centerpiece is a 4-row "human friction is not agent friction" decision table the agent applies on every tool being shipped, plus a 4-row discovery-models table (MCP eager / MCP staged-discovery / CLI via shell / Skills) showing per-model upfront token cost and tool-count ceiling. Names why "minimum viable set" applies to MCP-eager but not to CLI-via-shell + skills.
+- **`SKILL.md`** thesis ("What changes when an agent is the user") gains a 5th fact: *"They — you — carry human-trained biases."* Framed in second person to match the reader's identity, with the injunction to consult own experience instead of pattern-matching to training-data CLI norms.
+
+### Changed
+
+- **`SKILL.md`** patterns section split into two labeled subsections: **`### Always-applicable patterns`** (the existing 12 — they hold regardless of domain or loading model) and **`### Domain-determined choices`** (NEW: tool granularity, helper-vs-raw, read/write priority weighting — these depend on what kind of friction your agent has for your domain). The 12 patterns themselves are unchanged in content; the structural label is what's new.
+- **`SKILL.md`** "Do we also need an MCP server?" decision: 2-line addition naming the **loading model** explicitly. Pre-skills hosts load MCP tools upfront → minimum viable set discipline. CLI-via-shell + skills has effectively no upfront tool budget → full surface is fine.
+- **`SKILL.md`** reference index lists `think_like_an_agent.md` first (it's the lens the others apply through), with a one-line preview of its contents.
+- **[`references/build_path.md`](skills/agent-cli-builder/references/build_path.md)** Step 1 intake interview gains an 8th question: *"Read-mostly, write-heavy, or mixed?"* Affects Step 4 (grammar/granularity), Step 7 (which patterns are heaviest), Step 10 (skill section weighting). Default updated to "assume mixed."
+- **[`references/evaluation.md`](skills/agent-cli-builder/references/evaluation.md)** Context-window-discipline axis (axis 7) 3-points criterion gains a sentence: *for read-mostly CLIs, also requires a coarse-to-fine progressive-disclosure pipeline (e.g. `find` → `list_sections` → `get_section`), not just truncation.* The rubric structure, weights, and bands are unchanged.
+- **`README.md`** "What 'agent-native' means here" section gains a one-paragraph preface naming the universal-vs-domain-determined split and pointing at the new reference. Status & roadmap rewritten to reflect v0.4.0 (lead with the lens framing, then the structural changes). Project tree updated to list `references/think_like_an_agent.md` first under `references/`.
+
+### Why
+
+Across v0.3.0 and v0.3.1 the skill kept getting feedback that it was being too prescriptive without acknowledging the contextual nature of the advice. The deeper diagnosis — surfaced in conversation — was that the skill teaches CLI *patterns* but never the *lens* those patterns came from. Two consequences flowed from that omission. First, readers couldn't tell which patterns were universal vs domain-determined, so they applied granularity choices from a docs-reader CLI to a SQL-shaped CLI and got both wrong. Second, the apparent contradictions in agent-tooling discourse (well-shaped abstractions vs raw API passthrough) read as unresolved when they're actually era-dependent: tool-design prescriptions are bound to the loading model they assumed, and the loading model has shifted.
+
+The deeper bet: the agent reading this skill is itself the kind of mind they're designing for, and consulting their own introspective experience produces better CLI design than applying patterns from human-developer training data without questioning which intelligence those patterns were optimizing for. The 5th-fact addition to the thesis says this in second person; the new reference shows the worked cases; the patterns split labels which advice survives the lens unchanged and which advice is a design choice to make per-domain. Templates and existing references are unchanged.
+
 ## [0.3.1] — 2026-05-08
 
 Docs catch-up to the v0.3.0 skill refactor. No skill content changes.
@@ -144,7 +169,8 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.0...v0.2.1
