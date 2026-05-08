@@ -13,6 +13,11 @@
 .scratch/
 .scratch-*/
 
+# Temp commit-message file used by the agent's commit workflow on PowerShell
+# (PowerShell doesn't support bash heredocs, so commit messages are written
+# to disk first and passed via `git commit -F`).
+.commitmsg
+
 # --- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]

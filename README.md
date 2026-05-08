@@ -4,11 +4,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skills standard](https://img.shields.io/badge/Agent%20Skills-compliant-blue.svg)](https://agentskills.io)
-[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-brightgreen.svg)](CHANGELOG.md)
+[![Status: v0.3.1](https://img.shields.io/badge/status-v0.3.1-brightgreen.svg)](CHANGELOG.md)
 
 Most CLIs are built for humans, then "made compatible" with agents by tacking on `--json`. This skill flips the order: the CLI is designed for agents from the first command, and humans get a clean text mode for free. The skill is constructive *and* evaluative — it gives an agent a 12-step build path **and** an 11-axis weighted rubric (the **agent-readiness score**) to grade any CLI it encounters.
 
-It pairs with two working scaffolds that ship the twelve invariants pre-wired:
+It pairs with two working scaffolds that ship the patterns pre-wired:
 
 - **Python + Typer** — `pip install -e .` and have a passing CLI in one minute.
 - **Rust + clap** — two-crate workspace (share-core ready), `cargo install --path crates/<name>-cli --locked` produces a single static binary.
@@ -62,14 +62,67 @@ gh skill install Zekai-Zhao-321/agent-cli-builder agent-cli-builder
 npx skills add Zekai-Zhao-321/agent-cli-builder
 ```
 
-Targeting one specific agent, or no installer available? See per-platform guides:
+If neither installer covers your agent (offline, restricted environment, custom harness), clone the skill folder manually and drop it where your agent reads from:
 
-- [Claude Code](docs/install/claude-code.md)
-- [Cursor](docs/install/cursor.md)
-- [Codex CLI](docs/install/codex.md)
-- [Gemini CLI](docs/install/gemini-cli.md)
-- [OpenCode](docs/install/opencode.md)
-- [Manual / any other agent](docs/install/manual.md)
+```bash
+git clone https://github.com/Zekai-Zhao-321/agent-cli-builder.git /tmp/_acb \
+  && mv /tmp/_acb/skills/agent-cli-builder ~/<your-skills-dir>/ \
+  && rm -rf /tmp/_acb
+```
+
+| Platform | Skills directory |
+|---|---|
+| Claude Code | `~/.claude/skills/` (user) or `.claude/skills/` (project) |
+| Cursor | `.cursor/rules/` (project) or `~/.cursor/rules/` (global) |
+| Codex CLI | `~/.codex/skills/` (also accepts `~/.agents/skills/`) |
+| Gemini CLI | `~/.gemini/skills/` (or use `gemini skills install` — see notes) |
+| OpenCode | `~/.opencode/skills/` |
+| Custom harness | wherever your harness reads skills |
+
+After install, verify the path is exactly `<skills-dir>/agent-cli-builder/SKILL.md` (not nested deeper) and ask your agent something like *"Score my CLI against the agent-readiness rubric"* — a correct response references the build / retrofit / score routing in `SKILL.md`.
+
+<details>
+<summary>Per-platform notes</summary>
+
+**Claude Code.** The most common install mistake is a nested folder. If activation fails, run `ls ~/.claude/skills/agent-cli-builder/SKILL.md` — if SKILL.md is one level deeper, fix with `mv ~/.claude/skills/agent-cli-builder/agent-cli-builder ~/.claude/skills/ && rm -rf <empty-parent>`.
+
+**Cursor.** Cursor uses `.cursor/rules/` (not `skills/`). The skill activates by phrase match on the frontmatter; reference it explicitly with `@agent-cli-builder` in chat if auto-discovery doesn't trigger.
+
+**Codex CLI.** Also recognises the universal `~/.agents/skills/` location used by several other tools — useful if you want one location for multiple harnesses.
+
+**Gemini CLI.** Has a native installer that handles the `skills/<name>/` repo layout:
+
+```bash
+gemini skills install https://github.com/Zekai-Zhao-321/agent-cli-builder.git \
+  --path skills/agent-cli-builder
+```
+
+**OpenCode.** If your project uses `AGENTS.md` to declare available skills, add:
+
+```markdown
+## Skills
+- `agent-cli-builder` — building, retrofitting, scoring agent-native CLIs.
+```
+
+</details>
+
+<details>
+<summary>Multiple agents, one source of truth</summary>
+
+If you use several agent platforms, symlink the folder rather than cloning multiple copies:
+
+```bash
+git clone https://github.com/Zekai-Zhao-321/agent-cli-builder.git ~/code/agent-cli-builder
+
+ln -s ~/code/agent-cli-builder/skills/agent-cli-builder ~/.claude/skills/agent-cli-builder
+ln -s ~/code/agent-cli-builder/skills/agent-cli-builder ~/.codex/skills/agent-cli-builder
+ln -s ~/code/agent-cli-builder/skills/agent-cli-builder ~/.gemini/skills/agent-cli-builder
+ln -s ~/code/agent-cli-builder/skills/agent-cli-builder ~/.opencode/skills/agent-cli-builder
+```
+
+`git pull` in `~/code/agent-cli-builder` updates every platform at once. On Windows, symlinks need admin rights; use `mklink /J` for directory junctions instead, or just copy the folder to each location.
+
+</details>
 
 ### 2. Drive it
 
@@ -112,17 +165,17 @@ flagcli hello world --output json
 flagcli schema show hello
 ```
 
-The scaffolded CLI ships with the twelve invariants already in place: structured `{ok, data, metadata}` envelopes, semantic exit codes, raw-payload pathway (`--json` / `--params-file` / stdin), schema introspection (`schema show` + `schema output`), input hardening, `--dry-run`, async task pattern, and an HTTP client that maps HTTP status codes to exit codes for you. The Rust scaffold uses `rustls-tls-native-roots`, so it picks up the system CA chain — environments behind a corporate proxy work without OpenSSL setup.
+The scaffolded CLI ships with the twelve patterns already in place: structured `{ok, data, metadata}` envelopes, semantic exit codes, raw-payload pathway (`--json` / `--params-file` / stdin), schema introspection (`schema show` + `schema output`), input hardening, `--dry-run`, async task pattern, and an HTTP client that maps HTTP status codes to exit codes for you. The Rust scaffold uses `rustls-tls-native-roots`, so it picks up the system CA chain — environments behind a corporate proxy work without OpenSSL setup.
 
 ---
 
 ## What "agent-native" means here
 
-These are the **twelve invariants** every CLI in this skill must satisfy. The full skill explains the *why* and the failure mode behind each one.
+The twelve patterns of an agent-native CLI. The full skill explains the *why* and the failure mode behind each one — these are summary reminders, not rules to memorize.
 
-| # | Invariant | One-line rule |
+| # | Pattern | One-line rule |
 |---|---|---|
-| 1 | Stream separation | Stdout is data, stderr is UX. Spinners and progress never touch stdout. |
+| 1 | Stream-by-purpose | Stdout is data, stderr is UX. Spinners and progress never touch stdout. |
 | 2 | Auto-JSON in non-TTY | Pipe-detected → JSON by default. No `--output json` needed in scripts. |
 | 3 | Structured envelopes | Success: `{ok, data, metadata}`. Errors: `{ok:false, error:{code, exit_code, message, suggestions}}`. Truncated payloads self-describe. |
 | 4 | Semantic exit codes | `0/2/3/4/5/6/10/130` — validation, auth, quota, timeout, network, policy, interrupt — distinct and documented. |
@@ -131,8 +184,8 @@ These are the **twelve invariants** every CLI in this skill must satisfy. The fu
 | 7 | Schema introspection | `cli schema show <method>` returns request+response shapes; `cli schema output <method>` returns the literal stdout envelope. |
 | 8 | Context-window discipline | NDJSON pagination, `--fields` masks, `--include` for progressive detail, self-describing truncation. Default to small. |
 | 9 | Input hardening | Reject `?#%`, control chars, path traversals, double-encoded strings. Sandbox output paths to CWD. |
-| 10 | Safety rails | `--dry-run` for every write. `--non-interactive` first-class. Sanitize untrusted text returned to the agent. |
-| 11 | Async tasks split | Anything > 5 s gets `--async` returning a task id, plus `cli task get <id>` and `cli download <id>`. |
+| 10 | Safety rails | `--dry-run` for every write. Auto-detect TTY for the prompt-vs-no-prompt switch. Sanitize untrusted text returned to the agent. |
+| 11 | Async-tasks split | Anything > 5 s gets `--async` returning a task id, plus `cli task get <id>` and `cli download <id>` — required to survive harness timeouts (codex 10 s, opencode 2 min). |
 | 12 | Ship a `SKILL.md` | The CLI is the contract; the skill is the manual. Listed preferred flags, named recipes, called-out gotchas. |
 
 Full discussion in [`skills/agent-cli-builder/SKILL.md`](skills/agent-cli-builder/SKILL.md).
@@ -169,17 +222,9 @@ Full rubric, scoring criteria per axis, and the score-without-evidence guardrail
 
 ```
 agent-cli-builder/
-├── README.md                        ← you are here
+├── README.md                        ← you are here (incl. install instructions)
 ├── LICENSE                          ← MIT
 ├── CHANGELOG.md
-├── docs/
-│   └── install/
-│       ├── claude-code.md
-│       ├── cursor.md
-│       ├── codex.md
-│       ├── gemini-cli.md
-│       ├── opencode.md
-│       └── manual.md                ← universal install guide
 └── skills/
     └── agent-cli-builder/           ← the skill (this is what gets installed)
         ├── SKILL.md                 ← entry point: thesis + patterns + router
@@ -223,7 +268,9 @@ agent-cli-builder/
 
 ## Status & roadmap
 
-Current version: **v0.3.0** — heavy refactor. `SKILL.md` reframed from numbered "twelve invariants" to thesis-driven patterns + a router (build / retrofit / score). References consolidated 11 → 10 with no topic bleed. Description tightened ~1,100 → 310 chars. Scaffolds no longer ship a starter `SKILL.md` (a stale starter is worse than none — author yours from `references/shipping_skills.md`). Contract code stays in the templates; domain-specific patterns live in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract.
+Current version: **v0.3.1** — README aligned with the v0.3.0 skill refactor: "twelve invariants" framing replaced with "twelve patterns" so the README and `SKILL.md` stop disagreeing; six per-platform install docs collapsed into a single Quick start section in this README with `<details>` blocks for the platform-specific quirks (Cursor's `@` syntax, Gemini's native installer, Codex's universal path, etc.). The `docs/install/` directory is gone. Same skill content as v0.3.0; just the docs around it.
+
+v0.3.0 was the heavy skill refactor: `SKILL.md` reframed from numbered "twelve invariants" to thesis-driven patterns + a router (build / retrofit / score), references consolidated 11 → 10 with no topic bleed, description tightened ~1,100 → 310 chars, scaffolds no longer ship a starter `SKILL.md` (author yours from `references/shipping_skills.md`). Contract code stays in the templates; domain-specific patterns live in [`templates/RECIPES.md`](skills/agent-cli-builder/templates/RECIPES.md). The `verify_scaffold.py` checks pass against the Python template; the Rust template builds clean and serves the same envelope contract.
 
 Near-term ideas, not yet committed:
 

@@ -12,7 +12,23 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
-## [0.3.0] — 2026-05-08
+## [0.3.1] — 2026-05-08
+
+Docs catch-up to the v0.3.0 skill refactor. No skill content changes.
+
+### Changed
+
+- **`README.md` aligned with the v0.3.0 frame.** The "twelve invariants every CLI in this skill must satisfy" header and `Invariant` table column became "twelve patterns of an agent-native CLI" / `Pattern`, matching the SKILL.md voice. Two prose lines that referenced "twelve invariants" rewritten to "patterns". Same content, no contradiction with the SKILL.md anymore.
+- **Install instructions consolidated into the README.** The Quick start "Install" section now carries the official one-liners + a single manual `git clone` block + a per-platform skills-directory table. Platform-specific quirks (Claude Code's nested-folder pitfall, Cursor's `.cursor/rules/` directory + `@agent-cli-builder` syntax, Codex's `~/.agents/skills/` universal path, Gemini's native `gemini skills install` subcommand, OpenCode's `AGENTS.md` activation block) are folded into a `<details>` block. The "multiple agents, one source of truth" symlink tip moved to a second `<details>` block.
+
+### Removed
+
+- **`docs/install/{claude-code,cursor,codex,gemini-cli,opencode,manual}.md`** — six per-platform install docs (~448 lines total) deleted. They were ~80 % duplicated boilerplate (the `gh skill install` block, the `npx skills add` block, the `git clone /tmp/_acb && mv … && rm -rf` block, "Update / uninstall" boilerplate) with only ~5–10 lines of genuinely platform-specific content each. The distinct content lives in the README's `<details>` blocks; the rest belonged in one place to begin with.
+- **`docs/` directory** — now empty after removing `docs/install/`. Removed.
+
+### Why
+
+The v0.3.0 refactor reframed the skill from "twelve invariants" to "twelve patterns" but left the README and the per-platform install docs alone, citing scope ("repo-level docs are a separate concern"). One look at the result showed why that was the wrong call: the README's "What 'agent-native' means here" section opened with *"These are the **twelve invariants** every CLI in this skill must satisfy"* — directly contradicting the new SKILL.md, which calls them patterns and softens the "must satisfy" tone for exactly the reason the user flagged ("agents know how to code"). Same fix applied to the install docs: six near-identical files were maintenance debt with no upside; one consolidated section in the README is searchable in one place, edited in one place, and lets the platform-specific quirks live where they're easy to skim against each other.
 
 Heavy refactor: drop the prescriptive "twelve invariants" framing for thesis-driven patterns; turn `SKILL.md` into a router; consolidate references; stop shipping starter `SKILL.md`s inside the scaffold templates.
 
@@ -128,7 +144,8 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.1.0...v0.2.0
