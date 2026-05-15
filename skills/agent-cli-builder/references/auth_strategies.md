@@ -9,9 +9,36 @@ Auth has many legitimate flavors. Pick the one that fits where your CLI runs in 
 - **Personal access tokens (PAT)** — user pastes once, CLI stores. Simple, agent-friendly, the dominant SaaS pattern. `gh auth login --with-token` is the canonical implementation. Pair with **pipe-to-auth-login** (`echo "$KEY" | mycli auth login`) so an agent can install a token from an environment variable without it appearing in shell history or `ps`. Prefer this over `mycli auth login --token <KEY>` for the same reason.
 - **OAuth with device code** — `gh auth login` style. User completes a one-time device flow (browser on any machine they have); refresh tokens persist. The browser is human-only and one-time; once done, the agent doesn't see it.
 - **Service-account file / env var** — JSON file at `$MYCLI_CREDENTIALS_FILE`, or inline token in `$MYCLI_TOKEN`. CI workhorse. Pair with one of the above for non-CI use.
-- **Workload identity** — IAM role from instance metadata (EC2, ECS), K8s service-account token, AKS managed identity, GCE service account. The CLI gets auth for free when it runs inside a managed cloud workload.
+- **Workload identity** — IAM role from instance metadata (EC2, ECS), K8s service-account token, AKS managed identity, GCE service account. The CLI gets auth for free when it runs inside a managed cloud workload. For federation-style flows, prefer `$MYCLI_IDENTITY_TOKEN_FILE` (read JWT from a file) over `$MYCLI_IDENTITY_TOKEN` (inline in env) — the file path doesn't leak secrets via `ps` or shell history.
 
 Most production CLIs combine 2–3 of these. The credential resolver tries them in priority order and uses the first that's available.
+
+## Multi-tier credential precedence
+
+When multiple auth sources coexist (and they will — the developer has an env var, a profile, and a federation rule all configured simultaneously), the CLI needs an explicit, documented precedence chain. A well-designed one looks like:
+
+1. **Explicit flag / env var** (`--api-key`, `$MYCLI_TOKEN`) — highest, because the user specifically asked for it this invocation.
+2. **Named profile** (`--profile <name>`, `$MYCLI_PROFILE`) — explicit selection of a stored identity.
+3. **Federation / workload identity** — env-var-configured but not flag-passed; lower than an explicitly-named profile because a named profile is a deliberate choice, while federation env vars may be ambient from the platform.
+4. **Implicit profile** (whatever `active_config` or `"default"` resolves to) — lowest tier, because it "just happened to be lying around" rather than being explicitly chosen.
+
+Two important implementation details:
+
+**One-shot multi-source warning.** When more than one source is configured simultaneously, emit a single stderr notice naming each source and the precedence winner — no secret values printed, just the source names (e.g. `"Note: multiple auth sources configured (--api-key, active profile); using --api-key per precedence. Run 'mycli auth status' for details."`). Use `sync.Once` or equivalent so the warning fires once per CLI invocation, not once per API call.
+
+**Credentials-file existence check for profiles.** If your CLI's logout (`mycli auth logout`) deletes the credentials file but preserves the profile config (so settings like `workspace_id` / `base_url` survive a re-login), the credential resolver must check whether the credentials file actually exists before counting that profile as a valid source. Without this check, a stale profile entry blocks fall-through to federation or other lower-tier sources.
+
+## Profiles as a domain-determined choice
+
+Some CLIs benefit from a full profile system (`mycli profile activate/list/get/set` + `--profile <name>` global flag). The pattern wins when:
+
+- The same agent shows up across sessions with a stable role or identity (e.g. always using the same avatar, voice, or workspace).
+- Per-invocation flag burden is high without a profile (8+ flags that rarely change).
+- Multiple distinct identities coexist on one machine (personal vs CI vs team contexts).
+
+When it doesn't win: simple CLIs where auth is the only thing that persists (env var + credentials file is enough), or CLIs where the agent never reuses configuration across sessions. Not every CLI needs profiles — this is a domain-determined choice, like granularity.
+
+If you do ship profiles, surface the list of available profile names in `auth status` and (if you ship a top-level `agent-context`) in that schema, so the agent discovers available identities without parsing config files.
 
 ## The single constraint
 

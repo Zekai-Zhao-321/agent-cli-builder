@@ -12,6 +12,22 @@ All notable changes to `agent-cli-builder` are recorded here. The format follows
 - `skills.sh` listing for `npx skills add`.
 - `cargo-dist` config + GitHub Actions release workflow shipped with the Rust template.
 
+## [0.4.2] — 2026-05-15
+
+Deep-research pass against `anthropic-cli` (`ant`) — the most sophisticated agent-CLI we've surveyed. Absorbs patterns that fit the lens and are broadly useful; deliberately leaves out team-specific or niche patterns.
+
+### Added
+
+- **`SKILL.md` reference CLIs table**: `ant` (anthropic-cli) added as fifth row — Stainless-generated from OpenAPI, 7-format output, built-in `--transform` / `--transform-error` via GJSON, `@file://` inline file substitution, 5-tier credential precedence with one-shot multi-source warning, full profile system, careful pipe detection.
+- **[`references/output_contract.md`](skills/agent-cli-builder/references/output_contract.md)**: new "Richer format modes" subsection naming `jsonl` (explicit NDJSON streaming), `raw` (unquoted strings — the `jq -r` equivalent built into the CLI), `pretty` (colorized human-formatted), `yaml` as modes beyond the minimum `json` + `text`. New "Format errors independently of success" note — `--format-error` separate from `--format`. New "Built-in transforms reduce piping" note — `--transform` with a data-language expression eliminates `| jq` piping and external dependencies.
+- **[`references/input_and_payloads.md`](skills/agent-cli-builder/references/input_and_payloads.md)**: new "Inline `@file://` substitution" subsection — `@path` / `@file://path` / `@data://path` syntax anywhere in nested JSON/YAML values, recursive walk engine, stdin consumed-once pattern, `\@` escape. New "Relaxed input parsing" note — YAML-flavored input (`{key: value}` without strict quoting) reducing agent quoting burden.
+- **[`references/auth_strategies.md`](skills/agent-cli-builder/references/auth_strategies.md)**: new "Multi-tier credential precedence" section — 4-tier chain (explicit flag/env → named profile → federation/workload → implicit profile) with two implementation details: one-shot multi-source warning (names the sources and winner, no secrets printed, fires once per invocation) and credentials-file existence check (stale profile config after logout doesn't block fall-through to federation). New "Profiles as a domain-determined choice" section — when profiles win, when they don't, what to surface in `auth status`. Identity-token-file note added to workload identity bullet.
+- **[`references/safety_and_async.md`](skills/agent-cli-builder/references/safety_and_async.md)**: pipe-detection edge case added to `--non-interactive` section — Cursor's integrated terminal and some CI configs connect stdin as a pipe when nothing is being piped; the careful check does an OS-specific probe for actual data availability rather than trusting `!isatty(stdin)` alone.
+
+### Why
+
+The `anthropic-cli` repo (`ant`) is Anthropic's own CLI for their Developer Platform. As the authors of Claude, Skills, and the context-engineering playbook, their CLI design choices carry disproportionate signal. The patterns absorbed here are ones we verified against the lens (think like an agent) and found broadly useful: multi-format output reduces the agent's piping overhead; `@file://` inline substitution reduces temp-file choreography; multi-tier auth precedence with the one-shot warning is the most carefully-designed credential resolver we've seen; the pipe-detection edge case is a real bug in real environments. Profiles are reconsidered as a domain-determined choice (we skipped them in v0.4.1 as domain-specific; the Anthropic precedent + the clear "when it wins / when it doesn't" test makes them worth naming as an option). Templates and SKILL.md structure unchanged; these are reference-level refinements.
+
 ## [0.4.1] — 2026-05-08
 
 Refinements drawn from cross-pollinating the v0.4.0 lens against several agent-first CLIs in the wild (`gws`, `heygen-cli`, the rebuilt `cf`/Wrangler, `openai`). Sharpens existing patterns; doesn't add a new top-level frame. No SKILL.md restructure, no template touches.
@@ -189,7 +205,8 @@ Initial public release.
 - Public-facing **install docs** under `docs/install/` for Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, and a universal manual install path. Each features `gh skill install` ([docs](https://cli.github.com/manual/gh_skill)) and `npx skills add` ([skills.sh](https://skills.sh)) as the primary install paths, with manual `git clone` as fallback.
 - **`README.md`**, **`LICENSE`** (MIT), and this changelog.
 
-[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Zekai-Zhao-321/agent-cli-builder/compare/v0.3.0...v0.3.1

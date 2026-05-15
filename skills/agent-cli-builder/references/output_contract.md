@@ -27,6 +27,27 @@ def default_output_format() -> str:
 
 This is a common pattern in compact agent-first CLIs, and it is the cheapest way to make an existing CLI work for agents without breaking human muscle memory.
 
+### Richer format modes worth considering
+
+The minimum set is `json` + `text`. Richer CLIs ship more — pick what your domain needs:
+
+- **`jsonl`** — explicit NDJSON streaming mode (one JSON object per line). Essential for paginated lists where the consumer wants to `head -n 100` without buffering a giant array. If you already emit NDJSON for pagination, naming it as a first-class format makes the contract explicit.
+- **`raw`** — print the value without JSON quoting (equivalent to `jq -r`). Useful when the agent is piping a single string field into a non-JSON consumer. Without this, every downstream tool has to strip the surrounding quotes.
+- **`pretty`** — colorized, indented, human-friendly rendering. Routed through `$PAGER` when stdout is a TTY. Strictly human-facing, but nice to have alongside `json` so the developer debugging agent output doesn't have to pipe through `jq` themselves.
+- **`yaml`** — some teams prefer YAML for config-shaped output. Cheap to add alongside JSON; same data, different serializer.
+
+The flag name matters for cross-CLI vocabulary. Pick **one flag form** and enforce it across every command — always `--format`, or always `--output`, or always `--json` (boolean). Never `--format=json` on some commands and `--output json` on others. Inconsistency at this layer is its own category of brokenness.
+
+### Format errors independently of success
+
+Consider offering `--format-error` (or equivalent) separate from `--format`. An agent workflow may want success output as `json` for parsing while error output as `pretty` for human escalation — or vice versa. The pattern: errors are piped through the same formatting/transform machinery as success, just with a separate flag so the two streams can have different shapes. This is a refinement, not a requirement — most CLIs start with one flag for both and add the split when they see the need.
+
+### Built-in transforms reduce piping
+
+If the agent routinely extracts one field (`cli foo | jq '.data.id'`), a built-in `--transform` flag with a data-language expression (GJSON syntax, JSONPath, etc.) saves a process invocation and an external dependency. The CLI itself applies the transform before printing.
+
+Pros: one fewer binary in the pipeline; works in environments where `jq` isn't installed; shorter command lines for the agent. Cons: one more flag the agent has to discover; the data-language is one more dialect to learn. Wins for CLIs that are routinely piped and operate in environments where external tools aren't guaranteed.
+
 ## Success envelope
 
 ```json

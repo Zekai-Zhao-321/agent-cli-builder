@@ -23,6 +23,37 @@ echo '{"name": "Q1 Budget", "color": "blue"}' | mycli widgets create -
 
 If you only have bandwidth for two of the three, pick **flags + stdin**. File support is trivial to add once stdin works (just `open()` instead of `sys.stdin`).
 
+### Inline `@file://` substitution
+
+Beyond the three pathways above, some CLIs support **inline file references** anywhere a value appears — not just at the top-level body, but inside nested JSON/YAML fields:
+
+```bash
+# @path auto-detects text vs binary (base64)
+mycli messages create --message '{"content": [{"type": "image", "source": "@photo.jpg"}]}'
+
+# Explicit encoding: @file:// → always string, @data:// → always base64
+mycli messages create --content @file://prompt.txt
+mycli messages create --image @data://photo.png
+```
+
+The implementation is a recursive walk over the parsed input structure, substituting `@`-prefixed values with file contents before serializing the request. Escape literal `@` with `\@`. The engine should enforce that **stdin is consumable exactly once** — if two parameters both try to read stdin via `-` or `@-`, the second gets a clear error rather than silent empty input.
+
+This pattern reduces the agent's work for payloads that embed files (images in messages, attachments in tickets). Without it, the agent writes the full body to a temp file and passes `--params-file`. With it, the agent constructs the body inline and the CLI handles the file I/O.
+
+### Relaxed input parsing
+
+Strict JSON quoting (`'{"name": "value"}'`) is a frequent source of shell-escaping pain, especially for agents constructing payloads inline. Some CLIs accept **YAML-flavored input** where keys don't need quotes and simple scalar values are unquoted:
+
+```bash
+# Strict JSON — every key and string value quoted, shell escaping required
+mycli create --body '{"name": "alpha", "count": 3}'
+
+# YAML-flavored — same semantics, less quoting
+mycli create --body '{name: alpha, count: 3}'
+```
+
+This is a convenience, not a requirement. If your CLI's input parser already uses a YAML library (Go's `go-yaml`, Python's `yaml.safe_load`), you get this for free since YAML is a superset of JSON. The agent's quoting burden drops; humans appreciate it too.
+
 ## Raw payload as first-class
 
 Bespoke flags cannot express nested API objects without exploding into a custom flag tree. The `gws` design rule:

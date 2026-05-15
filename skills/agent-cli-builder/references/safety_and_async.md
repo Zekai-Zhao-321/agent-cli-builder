@@ -69,6 +69,8 @@ Reasons:
 
 **The primary mechanism is auto-detection.** When `stdout` is not a TTY (piped, redirected, captured by an agent harness), the CLI behaves non-interactively automatically. No flag needed for the common case. The major harnesses (codex, opencode, Claude Code, Cursor, Copilot CLI) all spawn the shell tool with plain pipes — `isatty()` returns false in the child — so auto-detection just works.
 
+**Edge case: pipes with no data.** Some environments (Cursor's integrated terminal, certain CI configurations) connect stdin as a pipe even when nothing is being piped in. A naive `!isatty(stdin)` check reports "piped input available" and the CLI blocks waiting on stdin that will never arrive. The more careful check: for regular files (`< file.txt`), treat as piped only if size > 0; for pipes/sockets, do an OS-specific check for whether data is actually available (e.g. `select()` / `PeekNamedPipe` with zero timeout). Both Python and Go have platform-specific ways to do this; the important part is not assuming "pipe exists" equals "data is coming."
+
 Concretely, the auto-detected behavior is:
 
 - No prompts for confirmation.
